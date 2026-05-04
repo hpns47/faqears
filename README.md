@@ -17,12 +17,12 @@
   - [🏛 System Architecture](#-system-architecture)
     - [Architectural Principles](#architectural-principles)
   - [🧩 Microservices Breakdown](#-microservices-breakdown)
-    - [1. `auth-service` — *Owner: Daniyar Abdrakhmanov*](#1-auth-service--owner-andrew-rudov)
-    - [2. `user-service` — *Owner: Daniyar Abdrakhmanov*](#2-user-service--owner-andrew-rudov)
+    - [1. `auth-service` — *Owner: Andrew Rudov*](#1-auth-service--owner-andrew-rudov)
+    - [2. `user-service` — *Owner: Andrew Rudov*](#2-user-service--owner-andrew-rudov)
     - [3. `catalog-service` — *Owner: Danial Boranbayev*](#3-catalog-service--owner-danial-boranbayev)
     - [4. `streaming-service` — *Owner: Danial Boranbayev*](#4-streaming-service--owner-danial-boranbayev)
-    - [5. `playlist-service` — *Owner: Andrew Rudov*](#5-playlist-service--owner-daniyar-abdrakhmanov)
-    - [6. `recommendation-service` — *Owner: Andrew Rudov*](#6-recommendation-service--owner-daniyar-abdrakhmanov)
+    - [5. `playlist-service` — *Owner: Daniyar Abdrakhmanov*](#5-playlist-service--owner-daniyar-abdrakhmanov)
+    - [6. `recommendation-service` — *Owner: Daniyar Abdrakhmanov*](#6-recommendation-service--owner-daniyar-abdrakhmanov)
   - [💾 Data Storage Strategy](#-data-storage-strategy)
   - [🔌 Inter-Service Communication](#-inter-service-communication)
   - [🚪 API Gateway \& Routing](#-api-gateway--routing)
@@ -39,7 +39,7 @@
 
 ## 🎯 Project Overview
 
-**Soundwave** is a backend-focused music streaming platform inspired by Spotify. The goal is not to compete with Spotify on UX or catalog, but to build a realistic, scalable distributed system that handles the core domains of a streaming service: user identity, music catalog, audio streaming, playlists, search, and recommendations.
+**faqears** is a backend-focused music streaming platform inspired by Spotify. The goal is not to compete with Spotify on UX or catalog, but to build a realistic, scalable distributed system that handles the core domains of a streaming service: user identity, music catalog, audio streaming, playlists, search, and recommendations.
 
 The project is intentionally split into independently deployable microservices, each owned by one team member. Services communicate primarily over **gRPC** for synchronous calls and **Apache Kafka** for asynchronous, event-driven workflows. The system is containerized with **Docker**, orchestrated with **Kubernetes**, and exposed through a single **API Gateway**.
 
@@ -355,7 +355,7 @@ Observability is treated as a first-class concern. Every service is instrumented
 
 **Logging.** Structured JSON logs written to stdout, collected by Promtail, stored in Loki. Every log line includes `service`, `trace_id`, `user_id` (when known), and `event`. Log levels are configurable per service via env var.
 
-**Dashboards.** Grafana hosts a per-service dashboard plus a top-level "Soundwave Overview" dashboard with the four golden signals (latency, traffic, errors, saturation) for the streaming path.
+**Dashboards.** Grafana hosts a per-service dashboard plus a top-level "faqears Overview" dashboard with the four golden signals (latency, traffic, errors, saturation) for the streaming path.
 
 **Alerting.** Alertmanager routes alerts to Slack. SLO-based alerting: a burn-rate alert fires when error budget is being consumed too fast over a 1-hour or 6-hour window.
 
@@ -378,7 +378,7 @@ Observability is treated as a first-class concern. Every service is instrumented
 We use a **monorepo** managed with Go workspaces. This simplifies cross-service refactors and shared code (proto definitions, common middleware) while allowing each service to be deployed independently.
 
 ```
-soundwave/
+faqears/
 ├── README.md
 ├── go.work
 ├── docker-compose.yml
