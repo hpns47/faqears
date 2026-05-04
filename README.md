@@ -63,7 +63,7 @@ The team consists of three engineers, each owning **two microservices** plus sha
 |---|---|---|
 | **Andrew Rudov** | `auth-service`, `user-service` | Identity domain, JWT issuance, OAuth2 integration, API Gateway auth middleware |
 | **Danial Boranbayev** | `catalog-service`, `streaming-service` | Music catalog domain, S3-compatible object storage, audio chunking and CDN integration |
-| **Daniyar Abdrakhmanov** | `playlist-service`, `recommendation-service` | Personalization domain, Kafka consumers for play events, ML feature pipeline |
+| **Daniyar Abdrakhmanov** | `playlist-service`, `recommendation-service` | Personalization domain, Kafka consumers for play events|
 
 Shared responsibilities (rotating ownership):
 
