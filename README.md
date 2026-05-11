@@ -23,6 +23,8 @@
     - [4. `streaming-service` — *Owner: Danial Boranbayev*](#4-streaming-service--owner-danial-boranbayev)
     - [5. `playlist-service` — *Owner: Daniyar Abdrakhmanov*](#5-playlist-service--owner-daniyar-abdrakhmanov)
     - [6. `recommendation-service` — *Owner: Daniyar Abdrakhmanov*](#6-recommendation-service--owner-daniyar-abdrakhmanov)
+    - [7. `payment-service` — *Owner: Andrew Rudov*](#7-payment-service--owner-andrew-rudov)
+    - [8. `generation-service` — *Owner: Daniyar Abdrakhmanov*](#8-generation-service--owner-daniyar-abdrakhmanov)
   - [💾 Data Storage Strategy](#-data-storage-strategy)
   - [🔌 Inter-Service Communication](#-inter-service-communication)
   - [🚪 API Gateway \& Routing](#-api-gateway--routing)
@@ -52,6 +54,8 @@ The project is intentionally split into independently deployable microservices, 
 - A user can search across tracks, albums, and artists with fuzzy matching.
 - A user receives personalized recommendations based on listening history.
 - The system records every play event and exposes analytics.
+- A new user can optionally upgrade to a **premium tier** by paying with crypto via **NowPayments** during or after registration; payment status arrives asynchronously via signed webhooks.
+- A premium user can **generate their own songs** in two stages: first the lyrics (via an LLM), then the audio (via a text-to-music model); the resulting track is ingested into their personal catalog and streamable like any other track.
 
 ---
 
@@ -61,9 +65,9 @@ The team consists of three engineers, each owning **two microservices** plus sha
 
 | Engineer | Owned Microservices | Cross-Cutting Responsibilities |
 |---|---|---|
-| **Andrew Rudov** | `auth-service`, `user-service` | Identity domain, JWT issuance, OAuth2 integration, API Gateway auth middleware |
+| **Andrew Rudov** | `auth-service`, `user-service`, `payment-service` | Identity & monetization domain, JWT issuance, OAuth2 integration, NowPayments webhook handling, API Gateway auth middleware |
 | **Danial Boranbayev** | `catalog-service`, `streaming-service` | Music catalog domain, S3-compatible object storage, audio chunking and CDN integration |
-| **Daniyar Abdrakhmanov** | `playlist-service`, `recommendation-service` | Personalization domain, Kafka consumers for play events|
+| **Daniyar Abdrakhmanov** | `playlist-service`, `recommendation-service`, `generation-service` | Personalization & generative domain, Kafka consumers for play events, AI lyric + music generation pipeline |
 
 Shared responsibilities (rotating ownership):
 
@@ -90,6 +94,10 @@ The system must support the following capabilities end-to-end:
 **Recommendations.** The system produces a "Daily Mix" and "Discover Weekly" for each active user based on their play history. Recommendations are precomputed nightly and cached.
 
 **Play Tracking & Analytics.** Every play event (track started, track completed, track skipped) is published to Kafka. Downstream consumers update play counts, feed the recommendation pipeline, and populate analytics dashboards.
+
+**Payments & Monetization.** Premium-tier upgrades are processed through **NowPayments** (crypto). During or shortly after registration, the user may request a premium upgrade and receives a NowPayments invoice with a deposit address and amount. NowPayments delivers status callbacks via signed webhooks (IPN — Instant Payment Notifications). The system verifies each webhook with **HMAC-SHA512** against the IPN secret, idempotently records the payment, and on a `finished` status upgrades the user tier from `free` to `premium`. Status transitions follow `waiting → confirming → confirmed → sending → finished`, with failure paths `failed`, `expired`, and `refunded`. The webhook receiver is at-least-once: duplicate deliveries are dropped by a unique key on `(payment_id, status, occurred_at)`.
+
+**AI Song Generation.** Premium users can compose songs in two sequential stages. **Stage 1 — Lyrics:** the user submits a prompt (theme, mood, language, genre); the system calls **Anthropic Claude** with a structured template and returns lyrics tagged by section (verse, chorus, bridge). The user can edit and re-run the stage until satisfied. **Stage 2 — Music:** the finalized lyrics are submitted to a text-to-music provider (**Suno API** in v1, with **Replicate** and **Udio** as configurable fallbacks); generation runs as an async job (typically 30–120 s). When the audio is ready, the service uploads it to MinIO, runs it through the same HLS transcoding pipeline used for ingested catalog tracks (96/192/320 kbps), and registers it in the catalog under a `user_generated = true` flag owned by the requesting user. Job progress is streamed to the client via Server-Sent Events backed by Kafka.
 
 ---
 
@@ -126,6 +134,10 @@ The stack is chosen to balance modern best practices with the team's existing Go
 **Observability.** **Prometheus** for metrics, **Grafana** for dashboards, **Jaeger** with **OpenTelemetry** for distributed tracing, **Loki** with **Promtail** for log aggregation. **Sentry** for error reporting from the application layer.
 
 **CI/CD.** **GitHub Actions** runs tests, builds Docker images, and pushes to a container registry on every PR. **ArgoCD** handles GitOps-based deployment to the Kubernetes cluster.
+
+**Payments.** **NowPayments** as the crypto payment processor — REST API for invoice creation, IPN webhook with **HMAC-SHA512** signature verification, supports BTC, ETH, USDT, USDC. Secrets (`NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`) live in **HashiCorp Vault**.
+
+**Generative AI.** **Anthropic Claude** (`anthropic-sdk-go`) for lyric generation; **Suno API** for text-to-music in v1, with **Replicate** and **Udio** as drop-in alternatives behind a provider interface in `internal/adapter/aigen/`. The same HLS pipeline as `streaming-service` handles transcoding of generated audio.
 
 **Auxiliary.** **HashiCorp Vault** for secrets, **Buf** for protobuf linting and breaking-change detection, **golangci-lint** for static analysis, **k6** for load testing.
 
@@ -277,6 +289,49 @@ The recommendation service is the personalization brain. It is read-heavy and to
 
 **Events Consumed.** `play.started`, `play.completed`, `play.skipped`.
 
+### 7. `payment-service` — *Owner: Andrew Rudov*
+
+The payment service handles monetization. NowPayments is the only payment provider in v1; the service is structured so additional providers (Stripe, Paddle, native cards) can be added behind a `PaymentProvider` port.
+
+**Responsibilities.** Issue invoices via the NowPayments REST API on user request, receive and verify NowPayments IPN webhooks (HMAC-SHA512 against the IPN secret), idempotently persist payment state transitions, publish `payment.*` events to Kafka, and signal `user-service` to upgrade a user's tier on a `finished` payment.
+
+**Webhook Flow.** A dedicated HTTP endpoint (`POST /api/v1/payments/nowpayments/webhook`) is exposed through the API Gateway. On each call: validate the `x-nowpayments-sig` header against the canonical JSON body, look up the payment by `payment_id`, apply the state transition under an idempotency key, and publish `payment.status_changed`. Because IPN delivery is at-least-once, the `payments_events` table has a unique constraint on `(payment_id, status, occurred_at)` to drop duplicates.
+
+**Registration Hook.** On `auth.user_registered`, the service optionally pre-creates a draft payment record so the user can immediately request an upgrade without a roundtrip to provider account setup. The draft is garbage-collected after 24 hours if unused.
+
+**Data.** PostgreSQL (tables: `payments`, `payments_events`, `webhook_log`). Redis for outbound-API rate-limiting and short-lived idempotency keys.
+
+**Key gRPC Methods.** `CreateInvoice`, `GetPayment`, `ListPaymentsByUser`, `HandleWebhook` (internal, called by the gateway's HTTP-to-gRPC bridge).
+
+**HTTP Endpoints (via gateway).** `POST /api/v1/payments/nowpayments/webhook` — public, signature-protected.
+
+**Events Consumed.** `auth.user_registered`.
+
+**Events Published.** `payment.invoice_created`, `payment.status_changed`, `payment.finished`, `payment.failed`.
+
+### 8. `generation-service` — *Owner: Daniyar Abdrakhmanov*
+
+The generation service produces user-created songs via a two-stage AI pipeline: lyrics first, then music. It is the most user-visible "magic" of the platform and is restricted to premium users.
+
+**Responsibilities.** Run a stateful, two-stage job per song.
+
+- **Stage 1 — Lyrics.** Call the **Anthropic Claude** API with a structured prompt template. Returned text is parsed into sections (verse, chorus, bridge) and stored as a `lyrics_version`. The user can submit revisions; each becomes a new version.
+- **Stage 2 — Music.** Submit finalized lyrics to a text-to-music provider (Suno API in v1; Replicate/Udio configurable). Poll or receive a webhook on completion, download the audio, upload to MinIO, then trigger the same HLS transcoding pipeline used by `catalog-service`. Once transcoded, the track is registered in the catalog under `user_generated = true`, owned by the requesting user.
+
+**Premium Gate.** Generation is restricted to users with `tier = premium`. The service reads the `tier` claim from the JWT and additionally calls `user-service.GetUser` for defense-in-depth. Free users can preview Stage 1 (lyrics only) up to N times per day, configurable via env, with results not persisted beyond the session.
+
+**Job Lifecycle.** Stages: `lyrics_queued → lyrics_ready → music_queued → music_ready → ingesting → published`, with `failed` reachable from any non-terminal step. Each transition publishes a Kafka event; the client subscribes via Server-Sent Events through the API Gateway.
+
+**Data.** PostgreSQL (tables: `generation_jobs`, `lyrics_versions`, `provider_calls`). MinIO for intermediate and final audio. Redis for active job state and per-user provider rate-limit counters.
+
+**Key gRPC Methods.** `GenerateLyrics`, `ReviseLyrics`, `GenerateMusic`, `GetJob`, `ListUserJobs`, `CancelJob`.
+
+**HTTP Endpoints (via gateway).** `GET /api/v1/generation/jobs/{id}/events` — Server-Sent Events stream for live progress.
+
+**Events Consumed.** `payment.finished` (to unlock premium features), `catalog.track_added` (to confirm successful ingestion of a generated track).
+
+**Events Published.** `generation.lyrics_ready`, `generation.music_ready`, `generation.published`, `generation.failed`.
+
 ---
 
 ## 💾 Data Storage Strategy
@@ -291,6 +346,8 @@ The "database per service" rule is enforced strictly. Each service has its own P
 | streaming-service | PostgreSQL | Redis (sessions) | MinIO (audio segments) |
 | playlist-service | PostgreSQL | Redis (hot playlists) | — |
 | recommendation-service | ClickHouse | Redis (precomputed lists) | PostgreSQL (metadata) |
+| payment-service | PostgreSQL | Redis (rate limit, idempotency) | — |
+| generation-service | PostgreSQL | Redis (job state, provider quotas) | MinIO (raw + final audio) |
 
 **Schema Migrations.** Each service uses `golang-migrate/migrate` with version-controlled SQL files. Migrations run as a Kubernetes Job before the service deployment. Backwards-incompatible changes follow the expand-contract pattern.
 
@@ -329,6 +386,14 @@ POST /api/v1/playlists                → playlist.PlaylistService/CreatePlaylis
 GET  /api/v1/stream/{trackId}/manifest.m3u8 → streaming.StreamingService/GetStreamManifest
 GET  /api/v1/recommendations/daily    → recommendation.RecommendationService/GetDailyMix
 GET  /api/v1/search?q={query}         → catalog.CatalogService/Search
+POST /api/v1/payments/invoices               → payment.PaymentService/CreateInvoice
+GET  /api/v1/payments/{id}                   → payment.PaymentService/GetPayment
+POST /api/v1/payments/nowpayments/webhook    → payment.PaymentService/HandleWebhook   (public, HMAC-protected)
+POST /api/v1/generation/lyrics               → generation.GenerationService/GenerateLyrics
+POST /api/v1/generation/lyrics/{id}/revise   → generation.GenerationService/ReviseLyrics
+POST /api/v1/generation/music                → generation.GenerationService/GenerateMusic
+GET  /api/v1/generation/jobs/{id}            → generation.GenerationService/GetJob
+GET  /api/v1/generation/jobs/{id}/events     → SSE stream backed by Kafka generation.* events
 ```
 
 ---
@@ -414,7 +479,9 @@ faqears/
 │   ├── catalog-service/
 │   ├── streaming-service/
 │   ├── playlist-service/
-│   └── recommendation-service/
+│   ├── recommendation-service/
+│   ├── payment-service/
+│   └── generation-service/
 ├── gateway/               # API Gateway
 ├── deploy/
 │   ├── helm/              # Helm charts per service
@@ -456,6 +523,8 @@ The project is planned in five milestones over roughly four months of part-time 
 **Milestone 4 — Playlists & Personalization (Weeks 11–14).** `playlist-service` with full CRUD and collaborative playlists. `recommendation-service` with v1 collaborative filtering. Kafka pipeline for play events. Deliverable: a user can build playlists and receive a Daily Mix.
 
 **Milestone 5 — Hardening (Weeks 15–16).** Load testing with k6, chaos testing with Litmus, security audit, SLO definition and burn-rate alerts, documentation polish, public demo deployment. Deliverable: the system runs in a production-like environment with documented SLOs.
+
+**Milestone 6 — Monetization & Generative AI (Weeks 17–20).** `payment-service` with NowPayments invoice issuance and HMAC-verified webhook handling; the `auth.user_registered → payment.draft_created → payment.finished → user.tier_changed` pipeline. `generation-service` with two-stage Claude lyrics + Suno music generation, premium-tier gating, reuse of `streaming-service`'s HLS pipeline for user-generated tracks, and SSE-based progress streaming through the API Gateway. Deliverable: a premium user can pay in crypto, write a song with AI assistance, and stream their own track from their personal catalog.
 
 ---
 

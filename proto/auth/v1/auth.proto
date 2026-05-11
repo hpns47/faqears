@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package auth.v1;
+
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc OAuthAuthorizeURL(OAuthAuthorizeURLRequest) returns (OAuthAuthorizeURLResponse);
+  rpc OAuthCallback(OAuthCallbackRequest) returns (OAuthCallbackResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 access_expires_at = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 access_expires_at = 3;
+}
+
+message ValidateTokenRequest {
+  string access_token = 1;
+}
+
+message ValidateTokenResponse {
+  string user_id = 1;
+  string email = 2;
+  repeated string roles = 3;
+}
+
+message LogoutRequest {
+  string access_token = 1;
+}
+
+message LogoutResponse {}
+
+message OAuthAuthorizeURLRequest {
+  string provider = 1;
+  string redirect_uri = 2;
+}
+
+message OAuthAuthorizeURLResponse {
+  string authorize_url = 1;
+  string state = 2;
+}
+
+message OAuthCallbackRequest {
+  string provider = 1;
+  string code = 2;
+  string state = 3;
+}
+
+message OAuthCallbackResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 access_expires_at = 3;
+  string user_id = 4;
+  bool created = 5;
+}

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package user.v1;
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc FollowUser(FollowUserRequest) returns (FollowUserResponse);
+  rpc UnfollowUser(UnfollowUserRequest) returns (UnfollowUserResponse);
+  rpc ListFollowers(ListFollowersRequest) returns (ListFollowersResponse);
+  rpc ListFollowing(ListFollowingRequest) returns (ListFollowingResponse);
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+  string country = 5;
+  string language = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message UpdateProfileRequest {
+  string user_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  string country = 4;
+  string language = 5;
+}
+
+message UpdateProfileResponse {
+  User user = 1;
+}
+
+message FollowUserRequest {
+  string follower_id = 1;
+  string followee_id = 2;
+}
+
+message FollowUserResponse {}
+
+message UnfollowUserRequest {
+  string follower_id = 1;
+  string followee_id = 2;
+}
+
+message UnfollowUserResponse {}
+
+message ListFollowersRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListFollowersResponse {
+  repeated User followers = 1;
+}
+
+message ListFollowingRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListFollowingResponse {
+  repeated User following = 1;
+}
