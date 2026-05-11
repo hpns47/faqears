@@ -1,0 +1,172 @@
+name: faqears
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - faqears
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-postgres-defaults: &postgres-defaults
+  image: postgres:16-alpine
+  environment:
+    POSTGRES_USER: faqears
+    POSTGRES_PASSWORD: faqears
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U faqears"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+
+services:
+  postgres-auth:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: auth
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  postgres-users:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: users
+    volumes:
+      - postgres-users-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "6379:6379"
+    <<: *service-defaults
+
+  kafka:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://kafka:9092,external://localhost:19092
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+    volumes:
+      - kafka-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "19092:19092"
+    <<: *service-defaults
+
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: faqears
+      MINIO_ROOT_PASSWORD: faqears-secret
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    <<: *service-defaults
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    environment:
+      AUTH_GRPC_ADDR: ":50051"
+      AUTH_DB_URL: "postgres://faqears:faqears@postgres-auth:5432/auth?sslmode=disable"
+      AUTH_JWT_SECRET: "dev-secret-change-me"
+      AUTH_JWT_ACCESS_TTL: "15m"
+      AUTH_JWT_REFRESH_TTL: "720h"
+      AUTH_BCRYPT_COST: "10"
+      AUTH_KAFKA_BROKERS: "kafka:9092"
+      AUTH_KAFKA_TOPIC: "auth.events"
+      AUTH_MIGRATE_URL: "file:///app/migrations"
+      AUTH_LOG_LEVEL: "info"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50061:50051"
+    <<: *service-defaults
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    environment:
+      USER_GRPC_ADDR: ":50052"
+      USER_DB_URL: "postgres://faqears:faqears@postgres-users:5432/users?sslmode=disable"
+      USER_KAFKA_BROKERS: "kafka:9092"
+      USER_KAFKA_AUTH_TOPIC: "auth.events"
+      USER_KAFKA_TOPIC: "user.events"
+      USER_KAFKA_GROUP_ID: "user-service"
+      USER_MIGRATE_URL: "file:///app/migrations"
+      USER_LOG_LEVEL: "info"
+    depends_on:
+      postgres-users:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50052"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50062:50052"
+    <<: *service-defaults
+
+volumes:
+  postgres-auth-data:
+  postgres-users-data:
+  redis-data:
+  kafka-data:
+  minio-data:
+
+networks:
+  faqears:
+    driver: bridge

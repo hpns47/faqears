@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package events.v1;
+
+message Envelope {
+  string event_id = 1;
+  string event_type = 2;
+  int64 occurred_at = 3;
+  string producer = 4;
+  string trace_id = 5;
+  bytes payload = 6;
+}
+
+message UserRegistered {
+  string user_id = 1;
+  string email = 2;
+  int64 occurred_at = 3;
+}
+
+message UserLoggedIn {
+  string user_id = 1;
+  int64 occurred_at = 2;
+}
+
+message ProfileUpdated {
+  string user_id = 1;
+  string display_name = 2;
+  int64 occurred_at = 3;
+}
+
+message UserFollowed {
+  string follower_id = 1;
+  string followee_id = 2;
+  int64 occurred_at = 3;
+}
