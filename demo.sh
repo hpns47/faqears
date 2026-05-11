@@ -14,6 +14,8 @@ NC='\033[0m'
 
 AUTH_ADDR=${AUTH_ADDR:-localhost:50061}
 USER_ADDR=${USER_ADDR:-localhost:50062}
+CATALOG_ADDR=${CATALOG_ADDR:-localhost:50063}
+GATEWAY_URL=${GATEWAY_URL:-http://localhost:8080}
 
 PASS=0
 FAIL=0
@@ -21,8 +23,9 @@ FAIL=0
 banner() {
     printf "${BOLD}${CYAN}"
     printf "================================================================\n"
-    printf "  FAQears  --  end-to-end demo (docker compose + gRPC tests)\n"
+    printf "  FAQears  --  end-to-end demo (docker compose + gRPC + HTTP)\n"
     printf "  auth: %s   user: %s\n" "$AUTH_ADDR" "$USER_ADDR"
+    printf "  catalog: %s   gateway: %s\n" "$CATALOG_ADDR" "$GATEWAY_URL"
     printf "================================================================${NC}\n"
 }
 
@@ -94,6 +97,34 @@ call_user() {
     "$GRPCURL" -plaintext -d "$2" "$USER_ADDR" "user.v1.UserService/$1" 2>&1
 }
 
+call_catalog() {
+    "$GRPCURL" -plaintext -d "$2" "$CATALOG_ADDR" "catalog.v1.CatalogService/$1" 2>&1
+}
+
+gw_get() {
+    local path=$1 token=${2:-}
+    if [[ -n "$token" ]]; then
+        curl -sS -H "Authorization: Bearer $token" -o /tmp/gw_body -w '%{http_code}' "$GATEWAY_URL$path"
+    else
+        curl -sS -o /tmp/gw_body -w '%{http_code}' "$GATEWAY_URL$path"
+    fi
+}
+
+gw_post() {
+    local path=$1 body=$2 token=${3:-}
+    if [[ -n "$token" ]]; then
+        curl -sS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d "$body" -o /tmp/gw_body -w '%{http_code}' "$GATEWAY_URL$path"
+    else
+        curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "$body" -o /tmp/gw_body -w '%{http_code}' "$GATEWAY_URL$path"
+    fi
+}
+
+gw_body() {
+    cat /tmp/gw_body 2>/dev/null
+}
+
 expect_error() {
     local addr=$1 fqm=$2 data=$3 expected=$4
     local out
@@ -126,6 +157,8 @@ usage: ./demo.sh [options]
 env overrides:
   AUTH_ADDR       default localhost:50061
   USER_ADDR       default localhost:50062
+  CATALOG_ADDR    default localhost:50063
+  GATEWAY_URL     default http://localhost:8080
 EOF
             exit 0
             ;;
@@ -154,7 +187,7 @@ if [[ $SKIP_UP -eq 0 ]]; then
 fi
 
 section "Waiting for health checks"
-for svc in faqears-postgres-auth-1 faqears-postgres-users-1 faqears-kafka-1 faqears-auth-service-1 faqears-user-service-1; do
+for svc in faqears-postgres-auth-1 faqears-postgres-users-1 faqears-postgres-catalog-1 faqears-kafka-1 faqears-redis-1 faqears-auth-service-1 faqears-user-service-1 faqears-catalog-service-1; do
     step "$svc"
     if wait_for_health "$svc" 90; then
         ok "$svc healthy"
@@ -164,6 +197,23 @@ for svc in faqears-postgres-auth-1 faqears-postgres-users-1 faqears-kafka-1 faqe
         exit 1
     fi
 done
+
+step "faqears-api-gateway-1 (HTTP, no Docker healthcheck — probe /healthz)"
+gateway_up=0
+for i in $(seq 1 30); do
+    if curl -sf -o /dev/null "$GATEWAY_URL/healthz"; then
+        gateway_up=1
+        break
+    fi
+    sleep 1
+done
+if [[ $gateway_up -eq 1 ]]; then
+    ok "api-gateway responds on /healthz"
+else
+    bad "api-gateway did not respond on /healthz within 30s"
+    docker compose logs api-gateway 2>&1 | tail -30
+    exit 1
+fi
 
 STAMP=$(date +%s)
 ALICE="alice-$STAMP@example.com"
@@ -360,20 +410,220 @@ else
     ok "Unfollow removed the relationship"
 fi
 
+section "catalog.IngestArtist + GetArtist"
+ART_RES=$(call_catalog IngestArtist '{"name":"Saryarka Demo","country":"KZ","biography":"end-to-end test"}')
+ARTIST_ID=$(echo "$ART_RES" | jq -r '.artistId // empty')
+show "ingest: $ART_RES"
+if [[ -n "$ARTIST_ID" ]]; then
+    ok "Artist ingested, id=$ARTIST_ID"
+else
+    bad "IngestArtist failed" "$ART_RES"
+    exit 1
+fi
+G_ART=$(call_catalog GetArtist "{\"artist_id\":\"$ARTIST_ID\"}")
+if echo "$G_ART" | grep -q "Saryarka Demo"; then
+    ok "GetArtist returns the record"
+else
+    bad "GetArtist mismatch" "$G_ART"
+fi
+
+section "catalog.IngestAlbum + GetAlbum + ListAlbumsByArtist"
+ALB_RES=$(call_catalog IngestAlbum "{\"artist_id\":\"$ARTIST_ID\",\"title\":\"Steppe Echoes\",\"year\":2025,\"cover_url\":\"http://minio/x.jpg\"}")
+ALBUM_ID=$(echo "$ALB_RES" | jq -r '.albumId // empty')
+if [[ -n "$ALBUM_ID" ]]; then
+    ok "Album ingested, id=$ALBUM_ID"
+else
+    bad "IngestAlbum failed" "$ALB_RES"
+    exit 1
+fi
+LBA=$(call_catalog ListAlbumsByArtist "{\"artist_id\":\"$ARTIST_ID\",\"limit\":10}")
+if echo "$LBA" | grep -q "$ALBUM_ID"; then
+    ok "ListAlbumsByArtist contains the new album"
+else
+    bad "ListAlbumsByArtist missing album" "$LBA"
+fi
+
+section "catalog.IngestTrack + GetTrack + ListTracksByAlbum + Redis cache"
+TRK_TITLE="Wind on Saryarka $STAMP"
+TRK_RES=$(call_catalog IngestTrack "{\"album_id\":\"$ALBUM_ID\",\"artist_id\":\"$ARTIST_ID\",\"title\":\"$TRK_TITLE\",\"duration_sec\":195,\"isrc\":\"KZ-DEMO-25-$STAMP\",\"genres\":[\"folk\",\"electronic\"]}")
+TRACK_ID=$(echo "$TRK_RES" | jq -r '.trackId // empty')
+if [[ -n "$TRACK_ID" ]]; then
+    ok "Track ingested, id=$TRACK_ID"
+else
+    bad "IngestTrack failed" "$TRK_RES"
+    exit 1
+fi
+GT1=$(call_catalog GetTrack "{\"track_id\":\"$TRACK_ID\"}")
+GT2=$(call_catalog GetTrack "{\"track_id\":\"$TRACK_ID\"}")
+if echo "$GT1" | grep -q "$TRK_TITLE" && echo "$GT2" | grep -q "$TRK_TITLE"; then
+    ok "GetTrack served twice (second hit should be Redis-cached)"
+else
+    bad "GetTrack inconsistent" "$GT1 // $GT2"
+fi
+if docker exec -t faqears-redis-1 redis-cli KEYS 'catalog:track:*' 2>&1 | grep -q "$TRACK_ID"; then
+    ok "Redis contains catalog:track:$TRACK_ID cache entry"
+else
+    show "$(docker exec -t faqears-redis-1 redis-cli KEYS 'catalog:track:*' 2>&1)"
+    bad "no Redis cache entry observed for the track"
+fi
+
+section "catalog.Search  --  ILIKE on title"
+SR=$(call_catalog Search "{\"query\":\"$STAMP\",\"limit\":50}")
+if echo "$SR" | grep -q "$TRACK_ID"; then
+    ok "Search finds the new track by stamped title"
+else
+    bad "Search did not find the new track" "$SR"
+fi
+
+section "kafka  --  catalog.events topic exists"
+if docker exec -t faqears-kafka-1 rpk topic list 2>&1 | grep -q "catalog.events"; then
+    ok "catalog.events topic created by publisher"
+else
+    bad "catalog.events topic missing"
+fi
+
+section "gateway  --  /healthz + /readyz"
+HC=$(gw_get /healthz)
+RC=$(gw_get /readyz)
+show "healthz: $(gw_body)  http=$HC"
+if [[ "$HC" == "200" ]]; then ok "/healthz returns 200"; else bad "/healthz returned $HC"; fi
+if [[ "$RC" == "200" ]]; then ok "/readyz returns 200"; else bad "/readyz returned $RC"; fi
+
+section "gateway  --  OpenAPI 3.1 spec served at /openapi.yaml"
+HC=$(gw_get /openapi.yaml)
+if [[ "$HC" == "200" ]] && gw_body | head -1 | grep -q "^openapi: 3"; then
+    ok "/openapi.yaml served, valid OpenAPI 3.x header"
+else
+    bad "/openapi.yaml not served" "http=$HC"
+fi
+
+section "gateway  --  Swagger UI served at /swagger/"
+HC=$(gw_get /swagger/)
+if [[ "$HC" == "200" ]] && gw_body | grep -q "swagger-ui"; then
+    ok "Swagger UI rendered — open http://localhost:8080/swagger/ in browser"
+else
+    bad "/swagger/ not served" "http=$HC"
+fi
+
+section "gateway  --  POST /api/v1/auth/register (HTTP→gRPC)"
+GW_STAMP=$(date +%s%N | tail -c 10)
+GW_EMAIL="gw-$GW_STAMP@example.com"
+GW_PASS="longenough123"
+HTTP=$(gw_post /api/v1/auth/register "{\"email\":\"$GW_EMAIL\",\"password\":\"$GW_PASS\"}")
+GW_USER_ID=$(gw_body | jq -r '.user_id // .userId // empty')
+show "body: $(gw_body)  http=$HTTP"
+if [[ ( "$HTTP" == "200" || "$HTTP" == "201" ) && -n "$GW_USER_ID" ]]; then
+    ok "register via gateway → user_id=$GW_USER_ID"
+else
+    bad "gateway register failed" "http=$HTTP body=$(gw_body)"
+    exit 1
+fi
+
+section "gateway  --  POST /api/v1/auth/login"
+HTTP=$(gw_post /api/v1/auth/login "{\"email\":\"$GW_EMAIL\",\"password\":\"$GW_PASS\"}")
+GW_ACCESS=$(gw_body | jq -r '.access_token // .accessToken // empty')
+if [[ "$HTTP" == "200" && -n "$GW_ACCESS" ]]; then
+    ok "login via gateway returned access_token"
+else
+    bad "gateway login failed" "http=$HTTP body=$(gw_body)"
+    exit 1
+fi
+
+section "gateway  --  GET /api/v1/tracks/{id} without Bearer  →  401"
+HTTP=$(gw_get "/api/v1/tracks/$TRACK_ID")
+if [[ "$HTTP" == "401" ]]; then
+    ok "unauthenticated request rejected with 401"
+else
+    bad "expected 401, got $HTTP" "$(gw_body)"
+fi
+
+section "gateway  --  GET /api/v1/tracks/{id} with Bearer  →  200"
+HTTP=$(gw_get "/api/v1/tracks/$TRACK_ID" "$GW_ACCESS")
+if [[ "$HTTP" == "200" ]] && gw_body | grep -q "Wind on Saryarka"; then
+    ok "track fetched through gateway"
+else
+    bad "gateway track fetch failed" "http=$HTTP body=$(gw_body)"
+fi
+
+section "gateway  --  GET /api/v1/search?q=$STAMP"
+HTTP=$(gw_get "/api/v1/search?q=$STAMP&limit=50" "$GW_ACCESS")
+if [[ "$HTTP" == "200" ]] && gw_body | grep -q "$TRACK_ID"; then
+    ok "search through gateway found the track"
+else
+    bad "gateway search failed" "http=$HTTP body=$(gw_body)"
+fi
+
+section "gateway  --  user auto-provision  +  GET /api/v1/users/{id}"
+for i in $(seq 1 15); do
+    HTTP=$(gw_get "/api/v1/users/$GW_USER_ID" "$GW_ACCESS")
+    if [[ "$HTTP" == "200" ]] && gw_body | grep -q "$GW_EMAIL"; then
+        break
+    fi
+    sleep 1
+done
+if [[ "$HTTP" == "200" ]] && gw_body | grep -q "$GW_EMAIL"; then
+    ok "user profile fetched via gateway (auto-provisioned)"
+else
+    bad "user profile unavailable via gateway" "http=$HTTP body=$(gw_body)"
+fi
+
+section "gateway  --  POST /api/v1/admin/catalog/artists  (non-admin → 403)"
+HTTP=$(gw_post /api/v1/admin/catalog/artists '{"name":"Wannabe","country":"KZ"}' "$GW_ACCESS")
+if [[ "$HTTP" == "403" ]]; then
+    ok "admin endpoint rejected non-admin caller with 403"
+else
+    bad "expected 403, got $HTTP" "$(gw_body)"
+fi
+
+section "oauth template  --  AuthorizeURL issues a real state into Redis"
+OA=$(call_auth OAuthAuthorizeURL '{"provider":"google","redirect_uri":"http://localhost:8080/oauth/cb"}')
+OA_STATE=$(echo "$OA" | jq -r '.state // empty')
+OA_URL=$(echo "$OA" | jq -r '.authorizeUrl // .authorize_url // empty')
+show "url=${OA_URL:0:80}..."
+show "state=$OA_STATE"
+if [[ -n "$OA_STATE" && "$OA_URL" == https://accounts.google.com/* ]]; then
+    ok "AuthorizeURL produced a real Google URL and state token"
+else
+    bad "AuthorizeURL malformed" "$OA"
+fi
+EX=$(docker exec faqears-redis-1 redis-cli EXISTS "auth:oauth_state:$OA_STATE" 2>&1 | tr -d '\r\n ')
+if [[ "$EX" == "1" ]]; then
+    ok "state token persisted in Redis (auth:oauth_state:*)"
+else
+    show "EXISTS returned: '$EX'"
+    show "all state keys: $(docker exec faqears-redis-1 redis-cli KEYS 'auth:oauth_state:*' 2>&1)"
+    bad "state token not found in Redis"
+fi
+
+section "oauth template  --  Callback consumes state then hits NotImplemented stub"
+if expect_error "$AUTH_ADDR" "auth.v1.AuthService/OAuthCallback" "{\"provider\":\"google\",\"code\":\"fake-code\",\"state\":\"$OA_STATE\"}" "not implemented"; then
+    ok "provider.Exchange returns 'not implemented' (template behavior)"
+else
+    bad "expected 'not implemented' from stub"
+fi
+
 section "db isolation  --  postgres-auth"
 docker exec -t faqears-postgres-auth-1 psql -U faqears -d auth -c "\dt" 2>&1 | sed "s/^/    /"
-if docker exec -t faqears-postgres-auth-1 psql -U faqears -d auth -c "\dt" 2>&1 | grep -q "user_follows"; then
-    bad "postgres-auth contains user-domain tables -- isolation broken"
+if docker exec -t faqears-postgres-auth-1 psql -U faqears -d auth -c "\dt" 2>&1 | grep -qE "user_follows|tracks|albums|artists"; then
+    bad "postgres-auth contains foreign-domain tables -- isolation broken"
 else
     ok "auth db has only auth-domain tables"
 fi
 
 section "db isolation  --  postgres-users"
 docker exec -t faqears-postgres-users-1 psql -U faqears -d users -c "\dt" 2>&1 | sed "s/^/    /"
-if docker exec -t faqears-postgres-users-1 psql -U faqears -d users -c "\dt" 2>&1 | grep -qE "auth_users|refresh_tokens"; then
-    bad "postgres-users contains auth-domain tables -- isolation broken"
+if docker exec -t faqears-postgres-users-1 psql -U faqears -d users -c "\dt" 2>&1 | grep -qE "auth_users|refresh_tokens|tracks|albums|artists"; then
+    bad "postgres-users contains foreign-domain tables -- isolation broken"
 else
     ok "users db has only user-domain tables"
+fi
+
+section "db isolation  --  postgres-catalog"
+docker exec -t faqears-postgres-catalog-1 psql -U faqears -d catalog -c "\dt" 2>&1 | sed "s/^/    /"
+if docker exec -t faqears-postgres-catalog-1 psql -U faqears -d catalog -c "\dt" 2>&1 | grep -qE "auth_users|refresh_tokens|user_follows"; then
+    bad "postgres-catalog contains foreign-domain tables -- isolation broken"
+else
+    ok "catalog db has only catalog-domain tables"
 fi
 
 section "kafka topics"

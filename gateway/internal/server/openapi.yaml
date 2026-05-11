@@ -1,0 +1,568 @@
+openapi: 3.1.0
+info:
+  title: FAQears API
+  version: 0.1.0
+  description: |
+    Public HTTP/JSON edge of the FAQears music streaming platform.
+    All routes under `/api/v1` map to internal gRPC services (auth, user, catalog) through the API Gateway.
+  contact:
+    name: FAQears Team
+    url: https://github.com/faqears/faqears
+servers:
+  - url: http://localhost:8080
+    description: Local dev (docker compose)
+tags:
+  - name: auth
+    description: Registration, login, JWT lifecycle, OAuth2 templates
+  - name: users
+    description: User profile and social graph
+  - name: catalog
+    description: Tracks, albums, artists, search
+  - name: admin
+    description: Admin-only ingestion endpoints (requires `admin` role)
+  - name: health
+    description: Liveness and readiness probes
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Returns 200 only when all upstream gRPC services are reachable.
+      security: []
+      responses:
+        "200":
+          description: All upstreams ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth:    { type: string, example: ok }
+                  user:    { type: string, example: ok }
+                  catalog: { type: string, example: ok }
+        "503":
+          description: At least one upstream not reachable
+
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            examples:
+              alice:
+                value:
+                  email: alice@example.com
+                  password: supersecret123
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "409": { $ref: "#/components/responses/AlreadyExists" }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange credentials for an access + refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Token pair
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate refresh token for a new access + refresh pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: New token pair (old refresh is revoked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout (currently a no-op; reserved for v2 revocation list)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      tags: [users]
+      summary: Get a user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [users]
+      summary: Update own profile
+      description: Caller can only update their own profile (id must equal caller's user_id).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+  /api/v1/users/{id}/follow:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      tags: [users]
+      summary: Caller follows `{id}`
+      responses:
+        "200": { description: OK }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    delete:
+      tags: [users]
+      summary: Caller unfollows `{id}`
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/users/{id}/followers:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+    get:
+      tags: [users]
+      summary: List users following `{id}`
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followers:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+
+  /api/v1/users/{id}/following:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+    get:
+      tags: [users]
+      summary: List users `{id}` is following
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  following:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+
+  /api/v1/tracks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [catalog]
+      summary: Get a track by id
+      responses:
+        "200":
+          description: Track
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/albums/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [catalog]
+      summary: Get an album by id
+      responses:
+        "200":
+          description: Album
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/artists/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [catalog]
+      summary: Get an artist by id
+      responses:
+        "200":
+          description: Artist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Artist"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/albums/{id}/tracks:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+    get:
+      tags: [catalog]
+      summary: List tracks in an album
+      responses:
+        "200":
+          description: Tracks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Track" }
+
+  /api/v1/artists/{id}/albums:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+    get:
+      tags: [catalog]
+      summary: List albums by an artist
+      responses:
+        "200":
+          description: Albums
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  albums:
+                    type: array
+                    items: { $ref: "#/components/schemas/Album" }
+
+  /api/v1/search:
+    get:
+      tags: [catalog]
+      summary: Search across tracks, albums, artists
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+          example: Saryarka
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Combined search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracks:  { type: array, items: { $ref: "#/components/schemas/Track" } }
+                  albums:  { type: array, items: { $ref: "#/components/schemas/Album" } }
+                  artists: { type: array, items: { $ref: "#/components/schemas/Artist" } }
+
+  /api/v1/admin/catalog/artists:
+    post:
+      tags: [admin]
+      summary: Ingest an artist (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:      { type: string }
+                country:   { type: string }
+                biography: { type: string }
+      responses:
+        "201":
+          description: Artist id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artist_id: { type: string, format: uuid }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+  /api/v1/admin/catalog/albums:
+    post:
+      tags: [admin]
+      summary: Ingest an album (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artist_id, title]
+              properties:
+                artist_id: { type: string, format: uuid }
+                title:     { type: string }
+                year:      { type: integer }
+                cover_url: { type: string }
+      responses:
+        "201":
+          description: Album id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  album_id: { type: string, format: uuid }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+  /api/v1/admin/catalog/tracks:
+    post:
+      tags: [admin]
+      summary: Ingest a track (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [album_id, artist_id, title]
+              properties:
+                album_id:     { type: string, format: uuid }
+                artist_id:    { type: string, format: uuid }
+                title:        { type: string }
+                duration_sec: { type: integer }
+                isrc:         { type: string }
+                genres:       { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Track id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  track_id: { type: string, format: uuid }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Obtain via `POST /api/v1/auth/login`. Include as `Authorization: Bearer <access_token>`.
+        Access tokens expire in 15 minutes; use `POST /api/v1/auth/refresh` to rotate.
+
+  parameters:
+    UserId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    EntityId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, default: 50, maximum: 100 }
+    Offset:
+      in: query
+      name: offset
+      schema: { type: integer, default: 0 }
+
+  responses:
+    Unauthenticated:
+      description: Missing, malformed, or expired token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PermissionDenied:
+      description: Caller is authenticated but not authorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    AlreadyExists:
+      description: Resource already exists
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidArgument:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: "user not found" }
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:       { type: string, description: JWT (HS256) }
+        refresh_token:      { type: string, description: Opaque rotating refresh token (30d TTL) }
+        access_expires_at:  { type: integer, format: int64, description: Unix seconds }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        display_name: { type: string }
+        avatar_url:   { type: string }
+        country:      { type: string }
+        language:     { type: string }
+
+    User:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        email:        { type: string, format: email }
+        display_name: { type: string }
+        avatar_url:   { type: string }
+        country:      { type: string }
+        language:     { type: string }
+        created_at:   { type: integer, format: int64 }
+        updated_at:   { type: integer, format: int64 }
+
+    Artist:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        name:       { type: string }
+        country:    { type: string }
+        biography:  { type: string }
+        created_at: { type: integer, format: int64 }
+
+    Album:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        artist_id:  { type: string, format: uuid }
+        title:      { type: string }
+        year:       { type: integer }
+        cover_url:  { type: string }
+        created_at: { type: integer, format: int64 }
+
+    Track:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        album_id:       { type: string, format: uuid }
+        artist_id:      { type: string, format: uuid }
+        title:          { type: string }
+        duration_sec:   { type: integer }
+        isrc:           { type: string }
+        genres:         { type: array, items: { type: string } }
+        user_generated: { type: boolean }
+        owner_user_id:  { type: string, format: uuid }
+        created_at:     { type: integer, format: int64 }

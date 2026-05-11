@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package catalog.v1;
+
+service CatalogService {
+  rpc GetArtist(GetArtistRequest) returns (GetArtistResponse);
+  rpc GetAlbum(GetAlbumRequest) returns (GetAlbumResponse);
+  rpc GetTrack(GetTrackRequest) returns (GetTrackResponse);
+  rpc ListTracksByAlbum(ListTracksByAlbumRequest) returns (ListTracksByAlbumResponse);
+  rpc ListAlbumsByArtist(ListAlbumsByArtistRequest) returns (ListAlbumsByArtistResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc IngestArtist(IngestArtistRequest) returns (IngestArtistResponse);
+  rpc IngestAlbum(IngestAlbumRequest) returns (IngestAlbumResponse);
+  rpc IngestTrack(IngestTrackRequest) returns (IngestTrackResponse);
+}
+
+message Artist {
+  string id = 1;
+  string name = 2;
+  string country = 3;
+  string biography = 4;
+  int64 created_at = 5;
+}
+
+message Album {
+  string id = 1;
+  string artist_id = 2;
+  string title = 3;
+  int32 year = 4;
+  string cover_url = 5;
+  int64 created_at = 6;
+}
+
+message Track {
+  string id = 1;
+  string album_id = 2;
+  string artist_id = 3;
+  string title = 4;
+  int32 duration_sec = 5;
+  string isrc = 6;
+  repeated string genres = 7;
+  bool user_generated = 8;
+  string owner_user_id = 9;
+  int64 created_at = 10;
+}
+
+message GetArtistRequest {
+  string artist_id = 1;
+}
+
+message GetArtistResponse {
+  Artist artist = 1;
+}
+
+message GetAlbumRequest {
+  string album_id = 1;
+}
+
+message GetAlbumResponse {
+  Album album = 1;
+}
+
+message GetTrackRequest {
+  string track_id = 1;
+}
+
+message GetTrackResponse {
+  Track track = 1;
+}
+
+message ListTracksByAlbumRequest {
+  string album_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListTracksByAlbumResponse {
+  repeated Track tracks = 1;
+}
+
+message ListAlbumsByArtistRequest {
+  string artist_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListAlbumsByArtistResponse {
+  repeated Album albums = 1;
+}
+
+message SearchRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message SearchResponse {
+  repeated Track tracks = 1;
+  repeated Album albums = 2;
+  repeated Artist artists = 3;
+}
+
+message IngestArtistRequest {
+  string name = 1;
+  string country = 2;
+  string biography = 3;
+}
+
+message IngestArtistResponse {
+  string artist_id = 1;
+}
+
+message IngestAlbumRequest {
+  string artist_id = 1;
+  string title = 2;
+  int32 year = 3;
+  string cover_url = 4;
+}
+
+message IngestAlbumResponse {
+  string album_id = 1;
+}
+
+message IngestTrackRequest {
+  string album_id = 1;
+  string artist_id = 2;
+  string title = 3;
+  int32 duration_sec = 4;
+  string isrc = 5;
+  repeated string genres = 6;
+  bool user_generated = 7;
+  string owner_user_id = 8;
+}
+
+message IngestTrackResponse {
+  string track_id = 1;
+}

@@ -517,6 +517,246 @@ func (*LogoutResponse) Descriptor() ([]byte, []int) {
 	return file_auth_v1_auth_proto_rawDescGZIP(), []int{9}
 }
 
+type OAuthAuthorizeURLRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,2,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OAuthAuthorizeURLRequest) Reset() {
+	*x = OAuthAuthorizeURLRequest{}
+	mi := &file_auth_v1_auth_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthAuthorizeURLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthAuthorizeURLRequest) ProtoMessage() {}
+
+func (x *OAuthAuthorizeURLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthAuthorizeURLRequest.ProtoReflect.Descriptor instead.
+func (*OAuthAuthorizeURLRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *OAuthAuthorizeURLRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *OAuthAuthorizeURLRequest) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+type OAuthAuthorizeURLResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AuthorizeUrl  string                 `protobuf:"bytes,1,opt,name=authorize_url,json=authorizeUrl,proto3" json:"authorize_url,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OAuthAuthorizeURLResponse) Reset() {
+	*x = OAuthAuthorizeURLResponse{}
+	mi := &file_auth_v1_auth_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthAuthorizeURLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthAuthorizeURLResponse) ProtoMessage() {}
+
+func (x *OAuthAuthorizeURLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthAuthorizeURLResponse.ProtoReflect.Descriptor instead.
+func (*OAuthAuthorizeURLResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *OAuthAuthorizeURLResponse) GetAuthorizeUrl() string {
+	if x != nil {
+		return x.AuthorizeUrl
+	}
+	return ""
+}
+
+func (x *OAuthAuthorizeURLResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type OAuthCallbackRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OAuthCallbackRequest) Reset() {
+	*x = OAuthCallbackRequest{}
+	mi := &file_auth_v1_auth_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthCallbackRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthCallbackRequest) ProtoMessage() {}
+
+func (x *OAuthCallbackRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthCallbackRequest.ProtoReflect.Descriptor instead.
+func (*OAuthCallbackRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *OAuthCallbackRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *OAuthCallbackRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *OAuthCallbackRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type OAuthCallbackResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken     string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken    string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	AccessExpiresAt int64                  `protobuf:"varint,3,opt,name=access_expires_at,json=accessExpiresAt,proto3" json:"access_expires_at,omitempty"`
+	UserId          string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Created         bool                   `protobuf:"varint,5,opt,name=created,proto3" json:"created,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *OAuthCallbackResponse) Reset() {
+	*x = OAuthCallbackResponse{}
+	mi := &file_auth_v1_auth_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthCallbackResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthCallbackResponse) ProtoMessage() {}
+
+func (x *OAuthCallbackResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthCallbackResponse.ProtoReflect.Descriptor instead.
+func (*OAuthCallbackResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *OAuthCallbackResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *OAuthCallbackResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *OAuthCallbackResponse) GetAccessExpiresAt() int64 {
+	if x != nil {
+		return x.AccessExpiresAt
+	}
+	return 0
+}
+
+func (x *OAuthCallbackResponse) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *OAuthCallbackResponse) GetCreated() bool {
+	if x != nil {
+		return x.Created
+	}
+	return false
+}
+
 var File_auth_v1_auth_proto protoreflect.FileDescriptor
 
 const file_auth_v1_auth_proto_rawDesc = "" +
@@ -548,13 +788,31 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x05roles\x18\x03 \x03(\tR\x05roles\"2\n" +
 	"\rLogoutRequest\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\"\x10\n" +
-	"\x0eLogoutResponse2\xde\x02\n" +
+	"\x0eLogoutResponse\"Y\n" +
+	"\x18OAuthAuthorizeURLRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12!\n" +
+	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\"V\n" +
+	"\x19OAuthAuthorizeURLResponse\x12#\n" +
+	"\rauthorize_url\x18\x01 \x01(\tR\fauthorizeUrl\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"\\\n" +
+	"\x14OAuthCallbackRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\"\xbe\x01\n" +
+	"\x15OAuthCallbackResponse\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12*\n" +
+	"\x11access_expires_at\x18\x03 \x01(\x03R\x0faccessExpiresAt\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\x12\x18\n" +
+	"\acreated\x18\x05 \x01(\bR\acreated2\x8a\x04\n" +
 	"\vAuthService\x12?\n" +
 	"\bRegister\x12\x18.auth.v1.RegisterRequest\x1a\x19.auth.v1.RegisterResponse\x126\n" +
 	"\x05Login\x12\x15.auth.v1.LoginRequest\x1a\x16.auth.v1.LoginResponse\x12K\n" +
 	"\fRefreshToken\x12\x1c.auth.v1.RefreshTokenRequest\x1a\x1d.auth.v1.RefreshTokenResponse\x12N\n" +
 	"\rValidateToken\x12\x1d.auth.v1.ValidateTokenRequest\x1a\x1e.auth.v1.ValidateTokenResponse\x129\n" +
-	"\x06Logout\x12\x16.auth.v1.LogoutRequest\x1a\x17.auth.v1.LogoutResponseB\x87\x01\n" +
+	"\x06Logout\x12\x16.auth.v1.LogoutRequest\x1a\x17.auth.v1.LogoutResponse\x12Z\n" +
+	"\x11OAuthAuthorizeURL\x12!.auth.v1.OAuthAuthorizeURLRequest\x1a\".auth.v1.OAuthAuthorizeURLResponse\x12N\n" +
+	"\rOAuthCallback\x12\x1d.auth.v1.OAuthCallbackRequest\x1a\x1e.auth.v1.OAuthCallbackResponseB\x87\x01\n" +
 	"\vcom.auth.v1B\tAuthProtoP\x01Z0github.com/faqears/faqears/gen/go/auth/v1;authv1\xa2\x02\x03AXX\xaa\x02\aAuth.V1\xca\x02\aAuth\\V1\xe2\x02\x13Auth\\V1\\GPBMetadata\xea\x02\bAuth::V1b\x06proto3"
 
 var (
@@ -569,35 +827,43 @@ func file_auth_v1_auth_proto_rawDescGZIP() []byte {
 	return file_auth_v1_auth_proto_rawDescData
 }
 
-var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_auth_v1_auth_proto_goTypes = []any{
-	(*RegisterRequest)(nil),       // 0: auth.v1.RegisterRequest
-	(*RegisterResponse)(nil),      // 1: auth.v1.RegisterResponse
-	(*LoginRequest)(nil),          // 2: auth.v1.LoginRequest
-	(*LoginResponse)(nil),         // 3: auth.v1.LoginResponse
-	(*RefreshTokenRequest)(nil),   // 4: auth.v1.RefreshTokenRequest
-	(*RefreshTokenResponse)(nil),  // 5: auth.v1.RefreshTokenResponse
-	(*ValidateTokenRequest)(nil),  // 6: auth.v1.ValidateTokenRequest
-	(*ValidateTokenResponse)(nil), // 7: auth.v1.ValidateTokenResponse
-	(*LogoutRequest)(nil),         // 8: auth.v1.LogoutRequest
-	(*LogoutResponse)(nil),        // 9: auth.v1.LogoutResponse
+	(*RegisterRequest)(nil),           // 0: auth.v1.RegisterRequest
+	(*RegisterResponse)(nil),          // 1: auth.v1.RegisterResponse
+	(*LoginRequest)(nil),              // 2: auth.v1.LoginRequest
+	(*LoginResponse)(nil),             // 3: auth.v1.LoginResponse
+	(*RefreshTokenRequest)(nil),       // 4: auth.v1.RefreshTokenRequest
+	(*RefreshTokenResponse)(nil),      // 5: auth.v1.RefreshTokenResponse
+	(*ValidateTokenRequest)(nil),      // 6: auth.v1.ValidateTokenRequest
+	(*ValidateTokenResponse)(nil),     // 7: auth.v1.ValidateTokenResponse
+	(*LogoutRequest)(nil),             // 8: auth.v1.LogoutRequest
+	(*LogoutResponse)(nil),            // 9: auth.v1.LogoutResponse
+	(*OAuthAuthorizeURLRequest)(nil),  // 10: auth.v1.OAuthAuthorizeURLRequest
+	(*OAuthAuthorizeURLResponse)(nil), // 11: auth.v1.OAuthAuthorizeURLResponse
+	(*OAuthCallbackRequest)(nil),      // 12: auth.v1.OAuthCallbackRequest
+	(*OAuthCallbackResponse)(nil),     // 13: auth.v1.OAuthCallbackResponse
 }
 var file_auth_v1_auth_proto_depIdxs = []int32{
-	0, // 0: auth.v1.AuthService.Register:input_type -> auth.v1.RegisterRequest
-	2, // 1: auth.v1.AuthService.Login:input_type -> auth.v1.LoginRequest
-	4, // 2: auth.v1.AuthService.RefreshToken:input_type -> auth.v1.RefreshTokenRequest
-	6, // 3: auth.v1.AuthService.ValidateToken:input_type -> auth.v1.ValidateTokenRequest
-	8, // 4: auth.v1.AuthService.Logout:input_type -> auth.v1.LogoutRequest
-	1, // 5: auth.v1.AuthService.Register:output_type -> auth.v1.RegisterResponse
-	3, // 6: auth.v1.AuthService.Login:output_type -> auth.v1.LoginResponse
-	5, // 7: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.RefreshTokenResponse
-	7, // 8: auth.v1.AuthService.ValidateToken:output_type -> auth.v1.ValidateTokenResponse
-	9, // 9: auth.v1.AuthService.Logout:output_type -> auth.v1.LogoutResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: auth.v1.AuthService.Register:input_type -> auth.v1.RegisterRequest
+	2,  // 1: auth.v1.AuthService.Login:input_type -> auth.v1.LoginRequest
+	4,  // 2: auth.v1.AuthService.RefreshToken:input_type -> auth.v1.RefreshTokenRequest
+	6,  // 3: auth.v1.AuthService.ValidateToken:input_type -> auth.v1.ValidateTokenRequest
+	8,  // 4: auth.v1.AuthService.Logout:input_type -> auth.v1.LogoutRequest
+	10, // 5: auth.v1.AuthService.OAuthAuthorizeURL:input_type -> auth.v1.OAuthAuthorizeURLRequest
+	12, // 6: auth.v1.AuthService.OAuthCallback:input_type -> auth.v1.OAuthCallbackRequest
+	1,  // 7: auth.v1.AuthService.Register:output_type -> auth.v1.RegisterResponse
+	3,  // 8: auth.v1.AuthService.Login:output_type -> auth.v1.LoginResponse
+	5,  // 9: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.RefreshTokenResponse
+	7,  // 10: auth.v1.AuthService.ValidateToken:output_type -> auth.v1.ValidateTokenResponse
+	9,  // 11: auth.v1.AuthService.Logout:output_type -> auth.v1.LogoutResponse
+	11, // 12: auth.v1.AuthService.OAuthAuthorizeURL:output_type -> auth.v1.OAuthAuthorizeURLResponse
+	13, // 13: auth.v1.AuthService.OAuthCallback:output_type -> auth.v1.OAuthCallbackResponse
+	7,  // [7:14] is the sub-list for method output_type
+	0,  // [0:7] is the sub-list for method input_type
+	0,  // [0:0] is the sub-list for extension type_name
+	0,  // [0:0] is the sub-list for extension extendee
+	0,  // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_auth_v1_auth_proto_init() }
@@ -611,7 +877,7 @@ func file_auth_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_v1_auth_proto_rawDesc), len(file_auth_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

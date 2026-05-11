@@ -19,11 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Register_FullMethodName      = "/auth.v1.AuthService/Register"
-	AuthService_Login_FullMethodName         = "/auth.v1.AuthService/Login"
-	AuthService_RefreshToken_FullMethodName  = "/auth.v1.AuthService/RefreshToken"
-	AuthService_ValidateToken_FullMethodName = "/auth.v1.AuthService/ValidateToken"
-	AuthService_Logout_FullMethodName        = "/auth.v1.AuthService/Logout"
+	AuthService_Register_FullMethodName          = "/auth.v1.AuthService/Register"
+	AuthService_Login_FullMethodName             = "/auth.v1.AuthService/Login"
+	AuthService_RefreshToken_FullMethodName      = "/auth.v1.AuthService/RefreshToken"
+	AuthService_ValidateToken_FullMethodName     = "/auth.v1.AuthService/ValidateToken"
+	AuthService_Logout_FullMethodName            = "/auth.v1.AuthService/Logout"
+	AuthService_OAuthAuthorizeURL_FullMethodName = "/auth.v1.AuthService/OAuthAuthorizeURL"
+	AuthService_OAuthCallback_FullMethodName     = "/auth.v1.AuthService/OAuthCallback"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -35,6 +37,8 @@ type AuthServiceClient interface {
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error)
 	ValidateToken(ctx context.Context, in *ValidateTokenRequest, opts ...grpc.CallOption) (*ValidateTokenResponse, error)
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
+	OAuthAuthorizeURL(ctx context.Context, in *OAuthAuthorizeURLRequest, opts ...grpc.CallOption) (*OAuthAuthorizeURLResponse, error)
+	OAuthCallback(ctx context.Context, in *OAuthCallbackRequest, opts ...grpc.CallOption) (*OAuthCallbackResponse, error)
 }
 
 type authServiceClient struct {
@@ -95,6 +99,26 @@ func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	return out, nil
 }
 
+func (c *authServiceClient) OAuthAuthorizeURL(ctx context.Context, in *OAuthAuthorizeURLRequest, opts ...grpc.CallOption) (*OAuthAuthorizeURLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OAuthAuthorizeURLResponse)
+	err := c.cc.Invoke(ctx, AuthService_OAuthAuthorizeURL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) OAuthCallback(ctx context.Context, in *OAuthCallbackRequest, opts ...grpc.CallOption) (*OAuthCallbackResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OAuthCallbackResponse)
+	err := c.cc.Invoke(ctx, AuthService_OAuthCallback_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -104,6 +128,8 @@ type AuthServiceServer interface {
 	RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error)
 	ValidateToken(context.Context, *ValidateTokenRequest) (*ValidateTokenResponse, error)
 	Logout(context.Context, *LogoutRequest) (*LogoutResponse, error)
+	OAuthAuthorizeURL(context.Context, *OAuthAuthorizeURLRequest) (*OAuthAuthorizeURLResponse, error)
+	OAuthCallback(context.Context, *OAuthCallbackRequest) (*OAuthCallbackResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -128,6 +154,12 @@ func (UnimplementedAuthServiceServer) ValidateToken(context.Context, *ValidateTo
 }
 func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*LogoutResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedAuthServiceServer) OAuthAuthorizeURL(context.Context, *OAuthAuthorizeURLRequest) (*OAuthAuthorizeURLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method OAuthAuthorizeURL not implemented")
+}
+func (UnimplementedAuthServiceServer) OAuthCallback(context.Context, *OAuthCallbackRequest) (*OAuthCallbackResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method OAuthCallback not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -240,6 +272,42 @@ func _AuthService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_OAuthAuthorizeURL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OAuthAuthorizeURLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).OAuthAuthorizeURL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_OAuthAuthorizeURL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).OAuthAuthorizeURL(ctx, req.(*OAuthAuthorizeURLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_OAuthCallback_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OAuthCallbackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).OAuthCallback(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_OAuthCallback_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).OAuthCallback(ctx, req.(*OAuthCallbackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -266,6 +334,14 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _AuthService_Logout_Handler,
+		},
+		{
+			MethodName: "OAuthAuthorizeURL",
+			Handler:    _AuthService_OAuthAuthorizeURL_Handler,
+		},
+		{
+			MethodName: "OAuthCallback",
+			Handler:    _AuthService_OAuthCallback_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
