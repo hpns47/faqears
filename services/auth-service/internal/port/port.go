@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/faqears/faqears/services/auth-service/internal/domain"
 )
@@ -32,4 +33,21 @@ type TokenIssuer interface {
 type EventPublisher interface {
 	UserRegistered(ctx context.Context, userID, email string) error
 	UserLoggedIn(ctx context.Context, userID string) error
+}
+
+type OAuthProvider interface {
+	Name() string
+	AuthCodeURL(state string, redirectURI string) string
+	Exchange(ctx context.Context, code string, redirectURI string) (*OAuthUserInfo, error)
+}
+
+type OAuthUserInfo struct {
+	ProviderUserID string
+	Email          string
+	DisplayName    string
+}
+
+type OAuthStateStore interface {
+	Issue(ctx context.Context, ttl time.Duration) (string, error)
+	Consume(ctx context.Context, state string) (bool, error)
 }

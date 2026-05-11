@@ -18,12 +18,13 @@ type Producer struct {
 
 func NewProducer(cfg ProducerConfig) *Producer {
 	w := &kafka.Writer{
-		Addr:         kafka.TCP(cfg.Brokers...),
-		Topic:        cfg.Topic,
-		Balancer:     &kafka.Hash{},
-		RequiredAcks: kafka.RequireAll,
-		BatchTimeout: 50 * time.Millisecond,
-		Async:        false,
+		Addr:                   kafka.TCP(cfg.Brokers...),
+		Topic:                  cfg.Topic,
+		Balancer:               &kafka.Hash{},
+		RequiredAcks:           kafka.RequireAll,
+		BatchTimeout:           50 * time.Millisecond,
+		Async:                  false,
+		AllowAutoTopicCreation: true,
 	}
 	return &Producer{w: w}
 }

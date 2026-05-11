@@ -10,11 +10,12 @@ import (
 
 type Server struct {
 	authv1.UnimplementedAuthServiceServer
-	auth *usecase.Auth
+	auth  *usecase.Auth
+	oauth *usecase.OAuth
 }
 
-func NewServer(auth *usecase.Auth) *Server {
-	return &Server{auth: auth}
+func NewServer(auth *usecase.Auth, oauth *usecase.OAuth) *Server {
+	return &Server{auth: auth, oauth: oauth}
 }
 
 func (s *Server) Register(ctx context.Context, req *authv1.RegisterRequest) (*authv1.RegisterResponse, error) {
@@ -66,4 +67,29 @@ func (s *Server) Logout(ctx context.Context, req *authv1.LogoutRequest) (*authv1
 		return nil, errs.ToGRPC(err)
 	}
 	return &authv1.LogoutResponse{}, nil
+}
+
+func (s *Server) OAuthAuthorizeURL(ctx context.Context, req *authv1.OAuthAuthorizeURLRequest) (*authv1.OAuthAuthorizeURLResponse, error) {
+	authorizeURL, state, err := s.oauth.AuthorizeURL(ctx, req.GetProvider(), req.GetRedirectUri())
+	if err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	return &authv1.OAuthAuthorizeURLResponse{
+		AuthorizeUrl: authorizeURL,
+		State:        state,
+	}, nil
+}
+
+func (s *Server) OAuthCallback(ctx context.Context, req *authv1.OAuthCallbackRequest) (*authv1.OAuthCallbackResponse, error) {
+	result, err := s.oauth.Callback(ctx, req.GetProvider(), req.GetCode(), req.GetState())
+	if err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	return &authv1.OAuthCallbackResponse{
+		AccessToken:     result.AccessToken,
+		RefreshToken:    result.RefreshToken,
+		AccessExpiresAt: result.AccessExpiresAt.Unix(),
+		UserId:          result.UserID,
+		Created:         result.Created,
+	}, nil
 }
