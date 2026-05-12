@@ -55,6 +55,61 @@ services:
     ports:
       - "5434:5432"
 
+  postgres-streaming:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: streaming
+    volumes:
+      - postgres-streaming-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  postgres-playlist:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: playlist
+    volumes:
+      - postgres-playlist-data:/var/lib/postgresql/data
+    ports:
+      - "5446:5432"
+
+  postgres-recommendation:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: recommendation
+    volumes:
+      - postgres-recommendation-data:/var/lib/postgresql/data
+    ports:
+      - "5447:5432"
+
+  postgres-payment:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: payment
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+
+  postgres-generation:
+    <<: [*postgres-defaults, *service-defaults]
+    environment:
+      POSTGRES_USER: faqears
+      POSTGRES_PASSWORD: faqears
+      POSTGRES_DB: generation
+    volumes:
+      - postgres-generation-data:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -156,6 +211,7 @@ services:
       USER_DB_URL: "postgres://faqears:faqears@postgres-users:5432/users?sslmode=disable"
       USER_KAFKA_BROKERS: "kafka:9092"
       USER_KAFKA_AUTH_TOPIC: "auth.events"
+      USER_KAFKA_PAYMENT_TOPIC: "payment.events"
       USER_KAFKA_TOPIC: "user.events"
       USER_KAFKA_GROUP_ID: "user-service"
       USER_MIGRATE_URL: "file:///app/migrations"
@@ -207,6 +263,176 @@ services:
       - "50063:50053"
     <<: *service-defaults
 
+  streaming-service:
+    build:
+      context: .
+      dockerfile: services/streaming-service/Dockerfile
+    environment:
+      STREAMING_GRPC_ADDR: ":50054"
+      STREAMING_DB_URL: "postgres://faqears:faqears@postgres-streaming:5432/streaming?sslmode=disable"
+      STREAMING_REDIS_ADDR: "redis:6379"
+      STREAMING_KAFKA_BROKERS: "kafka:9092"
+      STREAMING_KAFKA_TOPIC: "play.events"
+      STREAMING_MINIO_ENDPOINT: "minio:9000"
+      STREAMING_MINIO_ACCESS_KEY: "faqears"
+      STREAMING_MINIO_SECRET_KEY: "faqears-secret"
+      STREAMING_MINIO_USE_SSL: "false"
+      STREAMING_MINIO_BUCKET: "audio-originals"
+      STREAMING_SIGNED_URL_TTL: "15m"
+      STREAMING_MIGRATE_URL: "file:///app/migrations"
+      STREAMING_LOG_LEVEL: "info"
+    depends_on:
+      postgres-streaming:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50054"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50064:50054"
+    <<: *service-defaults
+
+  playlist-service:
+    build:
+      context: .
+      dockerfile: services/playlist-service/Dockerfile
+    environment:
+      PLAYLIST_GRPC_ADDR: ":50055"
+      PLAYLIST_DB_URL: "postgres://faqears:faqears@postgres-playlist:5432/playlist?sslmode=disable"
+      PLAYLIST_REDIS_ADDR: "redis:6379"
+      PLAYLIST_KAFKA_BROKERS: "kafka:9092"
+      PLAYLIST_KAFKA_TOPIC: "playlist.events"
+      PLAYLIST_KAFKA_CATALOG_TOPIC: "catalog.events"
+      PLAYLIST_KAFKA_GROUP_ID: "playlist-service"
+      PLAYLIST_CACHE_TTL: "5m"
+      PLAYLIST_MIGRATE_URL: "file:///app/migrations"
+      PLAYLIST_LOG_LEVEL: "info"
+    depends_on:
+      postgres-playlist:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50055"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50065:50055"
+    <<: *service-defaults
+
+  recommendation-service:
+    build:
+      context: .
+      dockerfile: services/recommendation-service/Dockerfile
+    environment:
+      RECOMMENDATION_GRPC_ADDR: ":50056"
+      RECOMMENDATION_DB_URL: "postgres://faqears:faqears@postgres-recommendation:5432/recommendation?sslmode=disable"
+      RECOMMENDATION_REDIS_ADDR: "redis:6379"
+      RECOMMENDATION_KAFKA_BROKERS: "kafka:9092"
+      RECOMMENDATION_KAFKA_PLAY_TOPIC: "play.events"
+      RECOMMENDATION_KAFKA_GROUP_ID: "recommendation-service"
+      RECOMMENDATION_REFRESH_INTERVAL: "10m"
+      RECOMMENDATION_MIGRATE_URL: "file:///app/migrations"
+      RECOMMENDATION_LOG_LEVEL: "info"
+    depends_on:
+      postgres-recommendation:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50056"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50066:50056"
+    <<: *service-defaults
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    environment:
+      PAYMENT_GRPC_ADDR: ":50057"
+      PAYMENT_DB_URL: "postgres://faqears:faqears@postgres-payment:5432/payment?sslmode=disable"
+      PAYMENT_KAFKA_BROKERS: "kafka:9092"
+      PAYMENT_KAFKA_TOPIC: "payment.events"
+      PAYMENT_NOWPAYMENTS_BASE_URL: "https://api-sandbox.nowpayments.io"
+      PAYMENT_NOWPAYMENTS_API_KEY: "${NOWPAYMENTS_API_KEY:-}"
+      PAYMENT_NOWPAYMENTS_IPN_SECRET: "${NOWPAYMENTS_IPN_SECRET:-}"
+      PAYMENT_IPN_CALLBACK_URL: "${PAYMENT_IPN_CALLBACK_URL:-http://localhost:8080/api/v1/payments/nowpayments/webhook}"
+      PAYMENT_MIGRATE_URL: "file:///app/migrations"
+      PAYMENT_LOG_LEVEL: "info"
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50057"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50067:50057"
+    <<: *service-defaults
+
+  generation-service:
+    build:
+      context: .
+      dockerfile: services/generation-service/Dockerfile
+    environment:
+      GENERATION_GRPC_ADDR: ":50058"
+      GENERATION_DB_URL: "postgres://faqears:faqears@postgres-generation:5432/generation?sslmode=disable"
+      GENERATION_KAFKA_BROKERS: "kafka:9092"
+      GENERATION_KAFKA_TOPIC: "generation.events"
+      GENERATION_ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GENERATION_ANTHROPIC_MODEL: "claude-haiku-4-5-20251001"
+      GENERATION_SUNO_API_KEY: "${SUNO_API_KEY:-}"
+      GENERATION_SUNO_BASE_URL: "https://api.suno.ai"
+      GENERATION_REPLICATE_API_TOKEN: "${REPLICATE_API_TOKEN:-}"
+      GENERATION_USER_GRPC_ADDR: "user-service:50052"
+      GENERATION_CATALOG_GRPC_ADDR: "catalog-service:50053"
+      GENERATION_STREAMING_GRPC_ADDR: "streaming-service:50054"
+      GENERATION_MIGRATE_URL: "file:///app/migrations"
+      GENERATION_LOG_LEVEL: "info"
+    depends_on:
+      postgres-generation:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      streaming-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50058"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "50068:50058"
+    <<: *service-defaults
+
   api-gateway:
     build:
       context: .
@@ -238,6 +464,11 @@ volumes:
   postgres-auth-data:
   postgres-users-data:
   postgres-catalog-data:
+  postgres-streaming-data:
+  postgres-playlist-data:
+  postgres-recommendation-data:
+  postgres-payment-data:
+  postgres-generation-data:
   redis-data:
   kafka-data:
   minio-data:
