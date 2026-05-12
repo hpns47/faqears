@@ -25,6 +25,7 @@ const (
 	UserService_UnfollowUser_FullMethodName  = "/user.v1.UserService/UnfollowUser"
 	UserService_ListFollowers_FullMethodName = "/user.v1.UserService/ListFollowers"
 	UserService_ListFollowing_FullMethodName = "/user.v1.UserService/ListFollowing"
+	UserService_UpdateTier_FullMethodName    = "/user.v1.UserService/UpdateTier"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -37,6 +38,7 @@ type UserServiceClient interface {
 	UnfollowUser(ctx context.Context, in *UnfollowUserRequest, opts ...grpc.CallOption) (*UnfollowUserResponse, error)
 	ListFollowers(ctx context.Context, in *ListFollowersRequest, opts ...grpc.CallOption) (*ListFollowersResponse, error)
 	ListFollowing(ctx context.Context, in *ListFollowingRequest, opts ...grpc.CallOption) (*ListFollowingResponse, error)
+	UpdateTier(ctx context.Context, in *UpdateTierRequest, opts ...grpc.CallOption) (*UpdateTierResponse, error)
 }
 
 type userServiceClient struct {
@@ -107,6 +109,16 @@ func (c *userServiceClient) ListFollowing(ctx context.Context, in *ListFollowing
 	return out, nil
 }
 
+func (c *userServiceClient) UpdateTier(ctx context.Context, in *UpdateTierRequest, opts ...grpc.CallOption) (*UpdateTierResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateTierResponse)
+	err := c.cc.Invoke(ctx, UserService_UpdateTier_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -117,6 +129,7 @@ type UserServiceServer interface {
 	UnfollowUser(context.Context, *UnfollowUserRequest) (*UnfollowUserResponse, error)
 	ListFollowers(context.Context, *ListFollowersRequest) (*ListFollowersResponse, error)
 	ListFollowing(context.Context, *ListFollowingRequest) (*ListFollowingResponse, error)
+	UpdateTier(context.Context, *UpdateTierRequest) (*UpdateTierResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -144,6 +157,9 @@ func (UnimplementedUserServiceServer) ListFollowers(context.Context, *ListFollow
 }
 func (UnimplementedUserServiceServer) ListFollowing(context.Context, *ListFollowingRequest) (*ListFollowingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListFollowing not implemented")
+}
+func (UnimplementedUserServiceServer) UpdateTier(context.Context, *UpdateTierRequest) (*UpdateTierResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateTier not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -274,6 +290,24 @@ func _UserService_ListFollowing_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_UpdateTier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateTierRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UpdateTier(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UpdateTier_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UpdateTier(ctx, req.(*UpdateTierRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -304,6 +338,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListFollowing",
 			Handler:    _UserService_ListFollowing_Handler,
+		},
+		{
+			MethodName: "UpdateTier",
+			Handler:    _UserService_UpdateTier_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

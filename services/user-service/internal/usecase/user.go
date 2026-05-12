@@ -129,6 +129,23 @@ func (u *User) ListFollowing(ctx context.Context, id string, limit, offset int) 
 	return u.follows.ListFollowing(ctx, id, normalizeLimit(limit), normalizeOffset(offset))
 }
 
+func (u *User) UpdateTier(ctx context.Context, id, tier string) (*domain.User, error) {
+	if id == "" {
+		return nil, domain.ErrInvalidUserID
+	}
+	if tier != domain.TierFree && tier != domain.TierPremium {
+		return nil, errs.InvalidArgument("tier must be 'free' or 'premium'")
+	}
+	rec, err := u.users.UpdateTier(ctx, id, tier)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, errs.Internal("update tier", err)
+	}
+	return rec, nil
+}
+
 func normalizeLimit(l int) int {
 	if l <= 0 || l > 100 {
 		return 50

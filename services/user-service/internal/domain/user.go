@@ -9,9 +9,15 @@ type User struct {
 	AvatarURL   string
 	Country     string
 	Language    string
+	Tier        string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
+
+const (
+	TierFree    = "free"
+	TierPremium = "premium"
+)
 
 type Follow struct {
 	FollowerID string

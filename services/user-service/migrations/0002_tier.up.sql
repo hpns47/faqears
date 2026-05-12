@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
+CREATE INDEX IF NOT EXISTS users_tier_idx ON users (tier);

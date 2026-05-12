@@ -33,7 +33,7 @@ func (r *FollowRepo) Remove(ctx context.Context, followerID, followeeID string) 
 
 func (r *FollowRepo) ListFollowers(ctx context.Context, userID string, limit, offset int) ([]*domain.User, error) {
 	const q = `
-SELECT u.id, u.email, u.display_name, u.avatar_url, u.country, u.language, u.created_at, u.updated_at
+SELECT u.id, u.email, u.display_name, u.avatar_url, u.country, u.language, u.tier, u.created_at, u.updated_at
 FROM user_follows f
 JOIN users u ON u.id = f.follower_id
 WHERE f.followee_id = $1
@@ -44,7 +44,7 @@ LIMIT $2 OFFSET $3`
 
 func (r *FollowRepo) ListFollowing(ctx context.Context, userID string, limit, offset int) ([]*domain.User, error) {
 	const q = `
-SELECT u.id, u.email, u.display_name, u.avatar_url, u.country, u.language, u.created_at, u.updated_at
+SELECT u.id, u.email, u.display_name, u.avatar_url, u.country, u.language, u.tier, u.created_at, u.updated_at
 FROM user_follows f
 JOIN users u ON u.id = f.followee_id
 WHERE f.follower_id = $1
@@ -63,7 +63,7 @@ func (r *FollowRepo) scanUsers(ctx context.Context, q, userID string, limit, off
 	for rows.Next() {
 		u := &domain.User{}
 		if err := rows.Scan(
-			&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Country, &u.Language, &u.CreatedAt, &u.UpdatedAt,
+			&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Country, &u.Language, &u.Tier, &u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
