@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package streaming.v1;
+
+service StreamingService {
+  rpc UploadAudio(UploadAudioRequest) returns (UploadAudioResponse);
+  rpc GetStreamURL(GetStreamURLRequest) returns (GetStreamURLResponse);
+  rpc RegisterPlay(RegisterPlayRequest) returns (RegisterPlayResponse);
+  rpc RegisterSkip(RegisterSkipRequest) returns (RegisterSkipResponse);
+  rpc RegisterComplete(RegisterCompleteRequest) returns (RegisterCompleteResponse);
+  rpc GetPlaybackSession(GetPlaybackSessionRequest) returns (GetPlaybackSessionResponse);
+  rpc HasAudio(HasAudioRequest) returns (HasAudioResponse);
+}
+
+message UploadAudioRequest {
+  string track_id = 1;
+  string content_type = 2;
+  bytes data = 3;
+}
+
+message UploadAudioResponse {
+  string object_key = 1;
+  int64 size_bytes = 2;
+}
+
+message GetStreamURLRequest {
+  string track_id = 1;
+}
+
+message GetStreamURLResponse {
+  string stream_url = 1;
+  int64 expires_at = 2;
+  int64 size_bytes = 3;
+  string content_type = 4;
+}
+
+message RegisterPlayRequest {
+  string track_id = 1;
+  string session_id = 2;
+}
+
+message RegisterPlayResponse {
+  string session_id = 1;
+}
+
+message RegisterSkipRequest {
+  string track_id = 1;
+  string session_id = 2;
+  int32 position_sec = 3;
+}
+
+message RegisterSkipResponse {}
+
+message RegisterCompleteRequest {
+  string track_id = 1;
+  string session_id = 2;
+  int32 duration_sec = 3;
+}
+
+message RegisterCompleteResponse {}
+
+message GetPlaybackSessionRequest {
+  string session_id = 1;
+}
+
+message GetPlaybackSessionResponse {
+  string session_id = 1;
+  string user_id = 2;
+  string track_id = 3;
+  int64 started_at = 4;
+}
+
+message HasAudioRequest {
+  string track_id = 1;
+}
+
+message HasAudioResponse {
+  bool exists = 1;
+  int64 size_bytes = 2;
+}

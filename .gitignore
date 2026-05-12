@@ -8,6 +8,7 @@
 .env.local
 .idea/
 .vscode/
+.claude/
 .DS_Store
 coverage.txt
 coverage.html

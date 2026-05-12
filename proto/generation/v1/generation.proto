@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package generation.v1;
+
+service GenerationService {
+  rpc GenerateLyrics(GenerateLyricsRequest) returns (GenerateLyricsResponse);
+  rpc ReviseLyrics(ReviseLyricsRequest) returns (ReviseLyricsResponse);
+  rpc GenerateMusic(GenerateMusicRequest) returns (GenerateMusicResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  rpc ListUserJobs(ListUserJobsRequest) returns (ListUserJobsResponse);
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+}
+
+message Job {
+  string id = 1;
+  string user_id = 2;
+  string status = 3;
+  string prompt = 4;
+  string lyrics = 5;
+  string title = 6;
+  string genre = 7;
+  string mood = 8;
+  string language = 9;
+  string track_id = 10;
+  string failure_reason = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}
+
+message LyricsVersion {
+  string id = 1;
+  string job_id = 2;
+  int32 revision = 3;
+  string body = 4;
+  int64 created_at = 5;
+}
+
+message GenerateLyricsRequest {
+  string user_id = 1;
+  string prompt = 2;
+  string genre = 3;
+  string mood = 4;
+  string language = 5;
+  string title = 6;
+}
+
+message GenerateLyricsResponse {
+  Job job = 1;
+  LyricsVersion lyrics = 2;
+}
+
+message ReviseLyricsRequest {
+  string job_id = 1;
+  string user_id = 2;
+  string instruction = 3;
+}
+
+message ReviseLyricsResponse {
+  Job job = 1;
+  LyricsVersion lyrics = 2;
+}
+
+message GenerateMusicRequest {
+  string job_id = 1;
+  string user_id = 2;
+}
+
+message GenerateMusicResponse {
+  Job job = 1;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message GetJobResponse {
+  Job job = 1;
+  repeated LyricsVersion lyrics_history = 2;
+}
+
+message ListUserJobsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListUserJobsResponse {
+  repeated Job jobs = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+  string user_id = 2;
+}
+
+message CancelJobResponse {
+  Job job = 1;
+}

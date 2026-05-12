@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package playlist.v1;
+
+service PlaylistService {
+  rpc CreatePlaylist(CreatePlaylistRequest) returns (CreatePlaylistResponse);
+  rpc GetPlaylist(GetPlaylistRequest) returns (GetPlaylistResponse);
+  rpc GetPlaylistByPermalink(GetPlaylistByPermalinkRequest) returns (GetPlaylistResponse);
+  rpc UpdatePlaylist(UpdatePlaylistRequest) returns (UpdatePlaylistResponse);
+  rpc DeletePlaylist(DeletePlaylistRequest) returns (DeletePlaylistResponse);
+  rpc AddTrack(AddTrackRequest) returns (AddTrackResponse);
+  rpc RemoveTrack(RemoveTrackRequest) returns (RemoveTrackResponse);
+  rpc ReorderTrack(ReorderTrackRequest) returns (ReorderTrackResponse);
+  rpc ListUserPlaylists(ListUserPlaylistsRequest) returns (ListUserPlaylistsResponse);
+  rpc AddCollaborator(AddCollaboratorRequest) returns (AddCollaboratorResponse);
+  rpc RemoveCollaborator(RemoveCollaboratorRequest) returns (RemoveCollaboratorResponse);
+}
+
+message Playlist {
+  string id = 1;
+  string owner_id = 2;
+  string name = 3;
+  string description = 4;
+  bool public = 5;
+  string permalink = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+  repeated string collaborator_ids = 9;
+  repeated PlaylistTrack tracks = 10;
+}
+
+message PlaylistTrack {
+  string track_id = 1;
+  string rank = 2;
+  int64 added_at = 3;
+  string added_by = 4;
+}
+
+message CreatePlaylistRequest {
+  string owner_id = 1;
+  string name = 2;
+  string description = 3;
+  bool public = 4;
+}
+
+message CreatePlaylistResponse {
+  Playlist playlist = 1;
+}
+
+message GetPlaylistRequest {
+  string playlist_id = 1;
+}
+
+message GetPlaylistResponse {
+  Playlist playlist = 1;
+}
+
+message GetPlaylistByPermalinkRequest {
+  string permalink = 1;
+}
+
+message UpdatePlaylistRequest {
+  string playlist_id = 1;
+  string name = 2;
+  string description = 3;
+  bool public = 4;
+}
+
+message UpdatePlaylistResponse {
+  Playlist playlist = 1;
+}
+
+message DeletePlaylistRequest {
+  string playlist_id = 1;
+  string caller_id = 2;
+}
+
+message DeletePlaylistResponse {}
+
+message AddTrackRequest {
+  string playlist_id = 1;
+  string track_id = 2;
+  string after_track_id = 3;
+  string caller_id = 4;
+}
+
+message AddTrackResponse {
+  Playlist playlist = 1;
+}
+
+message RemoveTrackRequest {
+  string playlist_id = 1;
+  string track_id = 2;
+  string caller_id = 3;
+}
+
+message RemoveTrackResponse {
+  Playlist playlist = 1;
+}
+
+message ReorderTrackRequest {
+  string playlist_id = 1;
+  string track_id = 2;
+  string after_track_id = 3;
+  string caller_id = 4;
+}
+
+message ReorderTrackResponse {
+  Playlist playlist = 1;
+}
+
+message ListUserPlaylistsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  bool include_collaborations = 4;
+}
+
+message ListUserPlaylistsResponse {
+  repeated Playlist playlists = 1;
+}
+
+message AddCollaboratorRequest {
+  string playlist_id = 1;
+  string collaborator_id = 2;
+  string caller_id = 3;
+}
+
+message AddCollaboratorResponse {}
+
+message RemoveCollaboratorRequest {
+  string playlist_id = 1;
+  string collaborator_id = 2;
+  string caller_id = 3;
+}
+
+message RemoveCollaboratorResponse {}

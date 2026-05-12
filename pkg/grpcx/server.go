@@ -16,8 +16,9 @@ import (
 )
 
 type ServerConfig struct {
-	Addr   string
-	Logger *slog.Logger
+	Addr       string
+	Logger     *slog.Logger
+	Extra      []grpc.UnaryServerInterceptor
 }
 
 func NewServer(cfg ServerConfig) (*grpc.Server, net.Listener, error) {
@@ -25,12 +26,13 @@ func NewServer(cfg ServerConfig) (*grpc.Server, net.Listener, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	srv := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			RecoveryInterceptor(cfg.Logger),
-			LoggingInterceptor(cfg.Logger),
-		),
-	)
+	chain := []grpc.UnaryServerInterceptor{
+		RecoveryInterceptor(cfg.Logger),
+		LoggingInterceptor(cfg.Logger),
+		IdentityInterceptor(),
+	}
+	chain = append(chain, cfg.Extra...)
+	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(chain...))
 	hs := health.NewServer()
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(srv, hs)

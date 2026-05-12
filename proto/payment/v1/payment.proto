@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package payment.v1;
+
+service PaymentService {
+  rpc CreateInvoice(CreateInvoiceRequest) returns (CreateInvoiceResponse);
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  rpc ListPaymentsByUser(ListPaymentsByUserRequest) returns (ListPaymentsByUserResponse);
+  rpc HandleWebhook(HandleWebhookRequest) returns (HandleWebhookResponse);
+}
+
+message Payment {
+  string id = 1;
+  string user_id = 2;
+  string provider = 3;
+  string provider_payment_id = 4;
+  string status = 5;
+  string price_currency = 6;
+  string price_amount = 7;
+  string pay_currency = 8;
+  string pay_address = 9;
+  string pay_amount = 10;
+  string purpose = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}
+
+message CreateInvoiceRequest {
+  string user_id = 1;
+  string purpose = 2;
+  string price_currency = 3;
+  string price_amount = 4;
+  string pay_currency = 5;
+}
+
+message CreateInvoiceResponse {
+  Payment payment = 1;
+  string pay_url = 2;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+
+message GetPaymentResponse {
+  Payment payment = 1;
+}
+
+message ListPaymentsByUserRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListPaymentsByUserResponse {
+  repeated Payment payments = 1;
+}
+
+message HandleWebhookRequest {
+  bytes raw_body = 1;
+  string signature = 2;
+}
+
+message HandleWebhookResponse {
+  string payment_id = 1;
+  string status = 2;
+}

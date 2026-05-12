@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package recommendation.v1;
+
+service RecommendationService {
+  rpc GetDailyMix(GetDailyMixRequest) returns (GetDailyMixResponse);
+  rpc GetDiscoverWeekly(GetDiscoverWeeklyRequest) returns (GetDiscoverWeeklyResponse);
+  rpc GetSimilarTracks(GetSimilarTracksRequest) returns (GetSimilarTracksResponse);
+  rpc GetTopTracks(GetTopTracksRequest) returns (GetTopTracksResponse);
+}
+
+message TrackRef {
+  string track_id = 1;
+  double score = 2;
+}
+
+message GetDailyMixRequest {
+  string user_id = 1;
+  int32 limit = 2;
+}
+
+message GetDailyMixResponse {
+  repeated TrackRef tracks = 1;
+  int64 generated_at = 2;
+}
+
+message GetDiscoverWeeklyRequest {
+  string user_id = 1;
+  int32 limit = 2;
+}
+
+message GetDiscoverWeeklyResponse {
+  repeated TrackRef tracks = 1;
+  int64 generated_at = 2;
+}
+
+message GetSimilarTracksRequest {
+  string track_id = 1;
+  int32 limit = 2;
+}
+
+message GetSimilarTracksResponse {
+  repeated TrackRef tracks = 1;
+}
+
+message GetTopTracksRequest {
+  int32 limit = 1;
+}
+
+message GetTopTracksResponse {
+  repeated TrackRef tracks = 1;
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	authv1 "github.com/faqears/faqears/gen/go/auth/v1"
+	"github.com/faqears/faqears/pkg/grpcx"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -43,6 +44,11 @@ func Auth(authClient authv1.AuthServiceClient, rdb *redis.Client, ttl time.Durat
 			ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
 			ctx = context.WithValue(ctx, UserRolesKey, claims.Roles)
+			ctx = grpcx.OutgoingIdentity(ctx, grpcx.Identity{
+				UserID: claims.UserID,
+				Email:  claims.Email,
+				Roles:  claims.Roles,
+			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
