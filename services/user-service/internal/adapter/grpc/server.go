@@ -77,6 +77,14 @@ func (s *Server) ListFollowing(ctx context.Context, req *userv1.ListFollowingReq
 	return &userv1.ListFollowingResponse{Following: out}, nil
 }
 
+func (s *Server) UpdateTier(ctx context.Context, req *userv1.UpdateTierRequest) (*userv1.UpdateTierResponse, error) {
+	u, err := s.uc.UpdateTier(ctx, req.GetUserId(), req.GetTier())
+	if err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	return &userv1.UpdateTierResponse{User: toProto(u)}, nil
+}
+
 func toProto(u *domain.User) *userv1.User {
 	return &userv1.User{
 		Id:          u.ID,
@@ -85,6 +93,7 @@ func toProto(u *domain.User) *userv1.User {
 		AvatarUrl:   u.AvatarURL,
 		Country:     u.Country,
 		Language:    u.Language,
+		Tier:        u.Tier,
 		CreatedAt:   u.CreatedAt.Unix(),
 		UpdatedAt:   u.UpdatedAt.Unix(),
 	}

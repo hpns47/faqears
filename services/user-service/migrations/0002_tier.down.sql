@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS users_tier_idx;
+ALTER TABLE users DROP COLUMN IF EXISTS tier;

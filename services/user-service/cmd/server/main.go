@@ -67,8 +67,11 @@ func run(log *slog.Logger) error {
 		publisher,
 	)
 
-	consumer := kafkaadapter.NewAuthEventsConsumer(cfg.Brokers, cfg.AuthTopic, cfg.GroupID, uc, log)
-	defer consumer.Close()
+	authConsumer := kafkaadapter.NewAuthEventsConsumer(cfg.Brokers, cfg.AuthTopic, cfg.GroupID, uc, log)
+	defer authConsumer.Close()
+
+	paymentConsumer := kafkaadapter.NewPaymentEventsConsumer(cfg.Brokers, cfg.PaymentTopic, cfg.GroupID+"-payment", uc, log)
+	defer paymentConsumer.Close()
 
 	srv, lis, err := grpcx.NewServer(grpcx.ServerConfig{Addr: cfg.GRPCAddr, Logger: log})
 	if err != nil {
@@ -76,14 +79,18 @@ func run(log *slog.Logger) error {
 	}
 	userv1.RegisterUserServiceServer(srv, grpcadapter.NewServer(uc))
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() {
 		log.Info("grpc server listening", slog.String("addr", cfg.GRPCAddr))
 		errCh <- srv.Serve(lis)
 	}()
 	go func() {
 		log.Info("kafka consumer started", slog.String("topic", cfg.AuthTopic))
-		errCh <- consumer.Run(ctx)
+		errCh <- authConsumer.Run(ctx)
+	}()
+	go func() {
+		log.Info("kafka consumer started", slog.String("topic", cfg.PaymentTopic))
+		errCh <- paymentConsumer.Run(ctx)
 	}()
 
 	select {

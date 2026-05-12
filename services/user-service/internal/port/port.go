@@ -10,6 +10,7 @@ type UserRepository interface {
 	Create(ctx context.Context, u *domain.User) error
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 	UpdateProfile(ctx context.Context, id string, p domain.Profile) (*domain.User, error)
+	UpdateTier(ctx context.Context, id, tier string) (*domain.User, error)
 }
 
 type FollowRepository interface {
