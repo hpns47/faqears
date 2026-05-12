@@ -10,6 +10,8 @@ import (
 	"time"
 
 	catalogv1 "github.com/faqears/faqears/gen/go/catalog/v1"
+	"google.golang.org/grpc"
+
 	"github.com/faqears/faqears/pkg/grpcx"
 	"github.com/faqears/faqears/pkg/logger"
 	"github.com/faqears/faqears/pkg/postgres"
@@ -79,7 +81,16 @@ func run(log *slog.Logger) error {
 		cfg.CacheTTL,
 	)
 
-	srv, lis, err := grpcx.NewServer(grpcx.ServerConfig{Addr: cfg.GRPCAddr, Logger: log})
+	adminGuard := grpcx.RequireMethodAnyRole(map[string][]string{
+		"/catalog.v1.CatalogService/IngestArtist": {"admin", "service"},
+		"/catalog.v1.CatalogService/IngestAlbum":  {"admin", "service"},
+		"/catalog.v1.CatalogService/IngestTrack":  {"admin", "service"},
+	})
+	srv, lis, err := grpcx.NewServer(grpcx.ServerConfig{
+		Addr:   cfg.GRPCAddr,
+		Logger: log,
+		Extra:  []grpc.UnaryServerInterceptor{adminGuard},
+	})
 	if err != nil {
 		return err
 	}

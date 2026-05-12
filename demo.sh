@@ -101,6 +101,21 @@ call_catalog() {
     "$GRPCURL" -plaintext -d "$2" "$CATALOG_ADDR" "catalog.v1.CatalogService/$1" 2>&1
 }
 
+call_catalog_admin() {
+    "$GRPCURL" -plaintext \
+        -rpc-header "x-faqears-user-id:00000000-0000-0000-0000-000000000001" \
+        -rpc-header "x-faqears-user-roles:user,admin" \
+        -d "$2" "$CATALOG_ADDR" "catalog.v1.CatalogService/$1" 2>&1
+}
+
+call_playlist() {
+    "$GRPCURL" -plaintext -d "$2" "localhost:50065" "playlist.v1.PlaylistService/$1" 2>&1
+}
+
+call_recommendation() {
+    "$GRPCURL" -plaintext -d "$2" "localhost:50066" "recommendation.v1.RecommendationService/$1" 2>&1
+}
+
 gw_get() {
     local path=$1 token=${2:-}
     if [[ -n "$token" ]]; then
@@ -187,7 +202,7 @@ if [[ $SKIP_UP -eq 0 ]]; then
 fi
 
 section "Waiting for health checks"
-for svc in faqears-postgres-auth-1 faqears-postgres-users-1 faqears-postgres-catalog-1 faqears-kafka-1 faqears-redis-1 faqears-auth-service-1 faqears-user-service-1 faqears-catalog-service-1; do
+for svc in faqears-postgres-auth-1 faqears-postgres-users-1 faqears-postgres-catalog-1 faqears-postgres-streaming-1 faqears-postgres-playlist-1 faqears-postgres-recommendation-1 faqears-postgres-payment-1 faqears-postgres-generation-1 faqears-kafka-1 faqears-redis-1 faqears-auth-service-1 faqears-user-service-1 faqears-catalog-service-1 faqears-streaming-service-1 faqears-playlist-service-1 faqears-recommendation-service-1 faqears-payment-service-1 faqears-generation-service-1; do
     step "$svc"
     if wait_for_health "$svc" 90; then
         ok "$svc healthy"
@@ -411,7 +426,7 @@ else
 fi
 
 section "catalog.IngestArtist + GetArtist"
-ART_RES=$(call_catalog IngestArtist '{"name":"Saryarka Demo","country":"KZ","biography":"end-to-end test"}')
+ART_RES=$(call_catalog_admin IngestArtist '{"name":"Saryarka Demo","country":"KZ","biography":"end-to-end test"}')
 ARTIST_ID=$(echo "$ART_RES" | jq -r '.artistId // empty')
 show "ingest: $ART_RES"
 if [[ -n "$ARTIST_ID" ]]; then
@@ -428,7 +443,7 @@ else
 fi
 
 section "catalog.IngestAlbum + GetAlbum + ListAlbumsByArtist"
-ALB_RES=$(call_catalog IngestAlbum "{\"artist_id\":\"$ARTIST_ID\",\"title\":\"Steppe Echoes\",\"year\":2025,\"cover_url\":\"http://minio/x.jpg\"}")
+ALB_RES=$(call_catalog_admin IngestAlbum "{\"artist_id\":\"$ARTIST_ID\",\"title\":\"Steppe Echoes\",\"year\":2025,\"cover_url\":\"http://minio/x.jpg\"}")
 ALBUM_ID=$(echo "$ALB_RES" | jq -r '.albumId // empty')
 if [[ -n "$ALBUM_ID" ]]; then
     ok "Album ingested, id=$ALBUM_ID"
@@ -445,7 +460,7 @@ fi
 
 section "catalog.IngestTrack + GetTrack + ListTracksByAlbum + Redis cache"
 TRK_TITLE="Wind on Saryarka $STAMP"
-TRK_RES=$(call_catalog IngestTrack "{\"album_id\":\"$ALBUM_ID\",\"artist_id\":\"$ARTIST_ID\",\"title\":\"$TRK_TITLE\",\"duration_sec\":195,\"isrc\":\"KZ-DEMO-25-$STAMP\",\"genres\":[\"folk\",\"electronic\"]}")
+TRK_RES=$(call_catalog_admin IngestTrack "{\"album_id\":\"$ALBUM_ID\",\"artist_id\":\"$ARTIST_ID\",\"title\":\"$TRK_TITLE\",\"duration_sec\":195,\"isrc\":\"KZ-DEMO-25-$STAMP\",\"genres\":[\"folk\",\"electronic\"]}")
 TRACK_ID=$(echo "$TRK_RES" | jq -r '.trackId // empty')
 if [[ -n "$TRACK_ID" ]]; then
     ok "Track ingested, id=$TRACK_ID"
@@ -600,6 +615,96 @@ if expect_error "$AUTH_ADDR" "auth.v1.AuthService/OAuthCallback" "{\"provider\":
     ok "provider.Exchange returns 'not implemented' (template behavior)"
 else
     bad "expected 'not implemented' from stub"
+fi
+
+section "admin seed  --  login admin@faqears.local"
+ADMIN_LOGIN=$(call_auth Login '{"email":"admin@faqears.local","password":"admin12345"}')
+ADMIN_TOKEN=$(echo "$ADMIN_LOGIN" | jq -r '.accessToken // empty')
+if [[ -n "$ADMIN_TOKEN" ]]; then
+    ok "admin login successful"
+else
+    bad "admin login failed" "$ADMIN_LOGIN"
+fi
+ADMIN_CLAIMS=$(call_auth ValidateToken "{\"access_token\":\"$ADMIN_TOKEN\"}")
+if echo "$ADMIN_CLAIMS" | grep -q "admin"; then
+    ok "admin role present in JWT claims"
+else
+    bad "admin role missing from claims" "$ADMIN_CLAIMS"
+fi
+
+section "role interceptor  --  catalog admin (admin role) accepts via gateway"
+ADMIN_ART=$(gw_post /api/v1/admin/catalog/artists '{"name":"DemoSeed Artist","country":"KZ"}' "$ADMIN_TOKEN")
+if [[ "$ADMIN_ART" == "200" || "$ADMIN_ART" == "201" ]] && gw_body | jq -r '.artist_id' | grep -qE '^[0-9a-f-]{36}$'; then
+    ok "admin ingest via gateway accepted"
+else
+    bad "admin ingest failed" "http=$ADMIN_ART body=$(gw_body)"
+fi
+
+section "role interceptor  --  direct gRPC without identity → PermissionDenied"
+if expect_error "$CATALOG_ADDR" "catalog.v1.CatalogService/IngestArtist" '{"name":"Bypass"}' "PermissionDenied"; then
+    ok "direct gRPC bypass blocked at service level (defense-in-depth)"
+else
+    bad "expected PermissionDenied for direct gRPC without role"
+fi
+
+section "streaming-service  --  HasAudio requires identity"
+if expect_error "localhost:50064" "streaming.v1.StreamingService/HasAudio" '{"track_id":"00000000-0000-0000-0000-000000000099"}' "Unauthenticated"; then
+    ok "streaming rejects unauthenticated direct gRPC"
+else
+    bad "expected Unauthenticated"
+fi
+
+section "playlist-service  --  CreatePlaylist + GetPlaylist"
+PL_RES=$(call_playlist CreatePlaylist "{\"owner_id\":\"$ALICE_ID\",\"name\":\"E2E Playlist $STAMP\",\"public\":true}")
+PL_ID=$(echo "$PL_RES" | jq -r '.playlist.id // empty')
+if [[ -n "$PL_ID" ]]; then
+    ok "playlist created, id=$PL_ID"
+else
+    bad "CreatePlaylist failed" "$PL_RES"
+fi
+PL_GET=$(call_playlist GetPlaylist "{\"playlist_id\":\"$PL_ID\"}")
+if echo "$PL_GET" | grep -q "E2E Playlist $STAMP"; then
+    ok "GetPlaylist returns the new playlist"
+else
+    bad "GetPlaylist mismatch" "$PL_GET"
+fi
+
+section "recommendation-service  --  GetTopTracks returns OK (empty until plays accumulate)"
+TOP=$(call_recommendation GetTopTracks '{"limit":5}')
+if echo "$TOP" | grep -qE '^\s*\{' ; then
+    ok "GetTopTracks responds"
+else
+    bad "GetTopTracks failed" "$TOP"
+fi
+
+section "payment-service  --  CreateInvoice without API key → Unavailable"
+if expect_error "localhost:50067" "payment.v1.PaymentService/CreateInvoice" '{"user_id":"00000000-0000-0000-0000-000000000001","purpose":"premium","price_currency":"usd","price_amount":"9.99","pay_currency":"btc"}' "Unauthenticated"; then
+    ok "payment correctly rejects without identity (Unauthenticated)"
+else
+    bad "expected Unauthenticated on missing identity"
+fi
+
+section "generation-service  --  GenerateLyrics without identity → Unauthenticated"
+if expect_error "localhost:50068" "generation.v1.GenerationService/GenerateLyrics" '{"user_id":"00000000-0000-0000-0000-000000000001","prompt":"steppe","genre":"folk","mood":"calm","language":"en","title":"X"}' "unauthenticated"; then
+    ok "generation correctly rejects without identity"
+else
+    bad "expected Unauthenticated"
+fi
+
+section "db isolation  --  postgres-streaming has only track_audio"
+docker exec -t faqears-postgres-streaming-1 psql -U faqears -d streaming -c "\dt" 2>&1 | sed "s/^/    /"
+if docker exec -t faqears-postgres-streaming-1 psql -U faqears -d streaming -c "\dt" 2>&1 | grep -qE "users|tracks|playlists"; then
+    bad "postgres-streaming contains foreign-domain tables -- isolation broken"
+else
+    ok "streaming db isolated"
+fi
+
+section "db isolation  --  postgres-playlist has only playlist tables"
+docker exec -t faqears-postgres-playlist-1 psql -U faqears -d playlist -c "\dt" 2>&1 | sed "s/^/    /"
+if docker exec -t faqears-postgres-playlist-1 psql -U faqears -d playlist -c "\dt" 2>&1 | grep -qE "\b(auth_users|refresh_tokens|user_follows|artists|albums|track_audio|play_events|payments|generation_jobs)\b"; then
+    bad "postgres-playlist contains foreign-domain tables -- isolation broken"
+else
+    ok "playlist db isolated"
 fi
 
 section "db isolation  --  postgres-auth"

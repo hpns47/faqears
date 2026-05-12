@@ -1,0 +1,137 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	generationv1 "github.com/faqears/faqears/gen/go/generation/v1"
+	"github.com/faqears/faqears/pkg/grpcx"
+	"github.com/faqears/faqears/pkg/logger"
+	"github.com/faqears/faqears/pkg/postgres"
+	"github.com/faqears/faqears/services/generation-service/internal/adapter/aigen"
+	grpcadapter "github.com/faqears/faqears/services/generation-service/internal/adapter/grpc"
+	"github.com/faqears/faqears/services/generation-service/internal/adapter/grpcclient"
+	kafkaadapter "github.com/faqears/faqears/services/generation-service/internal/adapter/kafka"
+	pgadapter "github.com/faqears/faqears/services/generation-service/internal/adapter/postgres"
+	"github.com/faqears/faqears/services/generation-service/internal/config"
+	"github.com/faqears/faqears/services/generation-service/internal/usecase"
+)
+
+func main() {
+	log := logger.New("generation-service", os.Getenv("GENERATION_LOG_LEVEL"), os.Stdout)
+	slog.SetDefault(log)
+
+	if err := run(log); err != nil {
+		log.Error("service stopped with error", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	log = logger.New("generation-service", cfg.LogLevel, os.Stdout)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := postgres.Migrate(cfg.DBURL, cfg.MigrateURL); err != nil {
+		return err
+	}
+	log.Info("migrations applied")
+
+	pool, err := postgres.NewPool(ctx, postgres.Config{
+		URL:             cfg.DBURL,
+		MaxConns:        20,
+		MinConns:        2,
+		MaxConnLifetime: time.Hour,
+		MaxConnIdleTime: 30 * time.Minute,
+	})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	log.Info("postgres connected")
+
+	jobRepo := pgadapter.NewJobRepo(pool)
+	lyricsRepo := pgadapter.NewLyricsRepo(pool)
+
+	publisher := kafkaadapter.NewPublisher(cfg.Brokers, cfg.EventTopic)
+	defer publisher.Close()
+
+	anthropicGen := aigen.NewAnthropicGenerator(cfg.AnthropicAPIKey, cfg.AnthropicModel)
+
+	sunoGen := aigen.NewSunoGenerator(cfg.SunoAPIKey, cfg.SunoBaseURL)
+	replicateGen := aigen.NewReplicateGenerator(cfg.ReplicateAPIToken)
+	mockGen := aigen.NewMockMusicGenerator()
+	musicRegistry := aigen.NewRegistry(sunoGen, replicateGen, mockGen)
+
+	userClient, err := grpcclient.NewUserClient(cfg.UserGRPCAddr)
+	if err != nil {
+		return err
+	}
+
+	catalogClient, err := grpcclient.NewCatalogClient(cfg.CatalogGRPCAddr)
+	if err != nil {
+		return err
+	}
+
+	streamingClient, err := grpcclient.NewStreamingClient(cfg.StreamingGRPCAddr)
+	if err != nil {
+		return err
+	}
+
+	uc := usecase.NewGeneration(
+		jobRepo,
+		lyricsRepo,
+		anthropicGen,
+		musicRegistry,
+		streamingClient,
+		catalogClient,
+		userClient,
+		publisher,
+		log,
+	)
+
+	srv, lis, err := grpcx.NewServer(grpcx.ServerConfig{Addr: cfg.GRPCAddr, Logger: log})
+	if err != nil {
+		return err
+	}
+	generationv1.RegisterGenerationServiceServer(srv, grpcadapter.NewServer(uc))
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Info("grpc server listening", slog.String("addr", cfg.GRPCAddr))
+		errCh <- srv.Serve(lis)
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Info("shutdown signal received")
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		srv.GracefulStop()
+		close(done)
+	}()
+	select {
+	case <-done:
+		log.Info("grpc server stopped")
+	case <-time.After(15 * time.Second):
+		srv.Stop()
+		log.Warn("grpc server force stopped")
+	}
+	return nil
+}

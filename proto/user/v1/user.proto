@@ -9,6 +9,7 @@ service UserService {
   rpc UnfollowUser(UnfollowUserRequest) returns (UnfollowUserResponse);
   rpc ListFollowers(ListFollowersRequest) returns (ListFollowersResponse);
   rpc ListFollowing(ListFollowingRequest) returns (ListFollowingResponse);
+  rpc UpdateTier(UpdateTierRequest) returns (UpdateTierResponse);
 }
 
 message User {
@@ -20,6 +21,16 @@ message User {
   string language = 6;
   int64 created_at = 7;
   int64 updated_at = 8;
+  string tier = 9;
+}
+
+message UpdateTierRequest {
+  string user_id = 1;
+  string tier = 2;
+}
+
+message UpdateTierResponse {
+  User user = 1;
 }
 
 message GetUserRequest {
