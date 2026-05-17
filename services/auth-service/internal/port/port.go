@@ -11,12 +11,15 @@ type UserRepository interface {
 	Create(ctx context.Context, u *domain.User) error
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetByID(ctx context.Context, id string) (*domain.User, error)
+	UpdatePassword(ctx context.Context, id, passwordHash string) error
 }
 
 type RefreshTokenRepository interface {
 	Save(ctx context.Context, t *domain.RefreshToken) error
 	GetByHash(ctx context.Context, hash string) (*domain.RefreshToken, error)
 	Revoke(ctx context.Context, id string) error
+	ListByUser(ctx context.Context, userID string) ([]*domain.RefreshToken, error)
+	GetByID(ctx context.Context, id string) (*domain.RefreshToken, error)
 }
 
 type PasswordHasher interface {

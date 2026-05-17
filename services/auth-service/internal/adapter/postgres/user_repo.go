@@ -51,3 +51,9 @@ FROM auth_users WHERE id = $1`
 	}
 	return u, nil
 }
+
+func (r *UserRepo) UpdatePassword(ctx context.Context, id, passwordHash string) error {
+	const q = `UPDATE auth_users SET password_hash = $2, updated_at = now() WHERE id = $1`
+	_, err := r.db.Exec(ctx, q, id, passwordHash)
+	return err
+}

@@ -44,8 +44,8 @@ func NewStreaming(
 var allowedContentTypes = []string{"audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav"}
 
 func (s *Streaming) UploadAudio(ctx context.Context, trackID, contentType string, data []byte) (*domain.TrackAudio, error) {
-	if !grpcx.HasRole(ctx, "admin") && !grpcx.HasRole(ctx, "service") {
-		return nil, errs.PermissionDenied("admin or service role required")
+	if !grpcx.HasRole(ctx, "admin") && !grpcx.HasRole(ctx, "service") && !grpcx.HasRole(ctx, "user") {
+		return nil, errs.PermissionDenied("authentication required")
 	}
 
 	if !strings.HasPrefix(contentType, "audio/") {

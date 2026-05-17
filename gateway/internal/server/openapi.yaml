@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: FAQears API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Public HTTP/JSON edge of the FAQears music streaming platform.
-    All routes under `/api/v1` map to internal gRPC services (auth, user, catalog) through the API Gateway.
+    All routes under `/api/v1` map to internal gRPC services through the API Gateway:
+    auth, user, catalog, streaming, playlist, recommendation, payment, generation.
+    JSON is snake_case (proto canonical). Bearer JWT required unless a route is marked public.
   contact:
     name: FAQears Team
     url: https://github.com/faqears/faqears
@@ -18,6 +20,16 @@ tags:
     description: User profile and social graph
   - name: catalog
     description: Tracks, albums, artists, search
+  - name: streaming
+    description: Stream URLs, playback sessions, audio upload
+  - name: playlists
+    description: Playlist CRUD, track ordering, collaborators
+  - name: recommendations
+    description: Daily mix, discover weekly, top, similar tracks
+  - name: payments
+    description: NowPayments invoices and webhook
+  - name: generation
+    description: AI lyrics + music generation jobs
   - name: admin
     description: Admin-only ingestion endpoints (requires `admin` role)
   - name: health
@@ -53,10 +65,7 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  auth:    { type: string, example: ok }
-                  user:    { type: string, example: ok }
-                  catalog: { type: string, example: ok }
+                additionalProperties: { type: string, example: ok }
         "503":
           description: At least one upstream not reachable
 
@@ -134,15 +143,140 @@ paths:
   /api/v1/auth/logout:
     post:
       tags: [auth]
-      summary: Logout (currently a no-op; reserved for v2 revocation list)
+      summary: Logout — revokes the current access token
+      responses:
+        "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/validate:
+    post:
+      tags: [auth]
+      summary: Validate the bearer token and return its claims
       responses:
         "200":
-          description: OK
+          description: Token claims
           content:
             application/json:
               schema:
                 type: object
+                properties:
+                  user_id: { type: string, format: uuid }
+                  email:   { type: string, format: email }
+                  roles:   { type: array, items: { type: string } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/change-password:
+    post:
+      tags: [auth]
+      summary: Change the caller's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password: { type: string }
+                new_password: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Password changed }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/sessions:
+    get:
+      tags: [auth]
+      summary: List the caller's active sessions
+      description: |
+        Each non-revoked, non-expired refresh token is a session. Pass the current
+        refresh token via the `X-Current-Refresh-Token` header to flag the current device.
+      parameters:
+        - in: header
+          name: X-Current-Refresh-Token
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/auth/sessions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    delete:
+      tags: [auth]
+      summary: Revoke one of the caller's sessions
+      responses:
+        "204": { description: Session revoked }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/auth/oauth/authorize-url:
+    post:
+      tags: [auth]
+      summary: Build an OAuth2 provider authorize URL (template)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:     { type: string, enum: [google, github] }
+                redirect_uri: { type: string }
+      responses:
+        "200":
+          description: Authorize URL + state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorize_url: { type: string }
+                  state:         { type: string }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+
+  /api/v1/auth/oauth/callback:
+    post:
+      tags: [auth]
+      summary: Exchange an OAuth2 callback code for tokens (template — providers return Unavailable)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, code, state]
+              properties:
+                provider: { type: string, enum: [google, github] }
+                code:     { type: string }
+                state:    { type: string }
+      responses:
+        "200":
+          description: Token pair + user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:      { type: string }
+                  refresh_token:     { type: string }
+                  access_expires_at: { type: integer, format: int64 }
+                  user_id:           { type: string, format: uuid }
+                  created:           { type: boolean }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /api/v1/users/{id}:
     parameters:
@@ -177,6 +311,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+  /api/v1/users/{id}/tier:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    put:
+      tags: [users]
+      summary: Change own subscription tier (subscription simulator)
+      description: |
+        Sets the caller's tier directly. Intended as a demo/testing simulator —
+        in production tier changes are driven by `payment.finished` events.
+        Caller can only change their own tier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tier]
+              properties:
+                tier: { type: string, enum: [free, premium] }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
         "403": { $ref: "#/components/responses/PermissionDenied" }
 
   /api/v1/users/{id}/follow:
@@ -430,6 +593,717 @@ paths:
                   track_id: { type: string, format: uuid }
         "403": { $ref: "#/components/responses/PermissionDenied" }
 
+  /api/v1/tracks:
+    post:
+      tags: [catalog]
+      summary: Create a user-generated track
+      description: |
+        Any authenticated user may create a track. It is flagged `user_generated=true`
+        and attached to the system "User Uploads" artist/album. Attach audio afterwards
+        via `POST /api/v1/streaming/tracks/{id}/audio`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:        { type: string }
+                duration_sec: { type: integer }
+                genres:       { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Track id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  track_id: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/streaming/tracks/{id}/url:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [streaming]
+      summary: Get a presigned stream URL for a track
+      responses:
+        "200":
+          description: Presigned URL and metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamURL"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/streaming/tracks/{id}/stream:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [streaming]
+      summary: Redirect (302) to the presigned MinIO stream URL
+      responses:
+        "302":
+          description: Redirect to presigned URL
+          headers:
+            Location:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/streaming/play:
+    post:
+      tags: [streaming]
+      summary: Start a playback session (emits play.events Kafka event)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id]
+              properties:
+                track_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Playback session id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string, format: uuid }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/streaming/skip:
+    post:
+      tags: [streaming]
+      summary: Register a skip event for a playback session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id, session_id]
+              properties:
+                track_id:     { type: string, format: uuid }
+                session_id:   { type: string, format: uuid }
+                position_sec: { type: integer }
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/streaming/complete:
+    post:
+      tags: [streaming]
+      summary: Register a completed play for a playback session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id, session_id]
+              properties:
+                track_id:     { type: string, format: uuid }
+                session_id:   { type: string, format: uuid }
+                duration_sec: { type: integer }
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/streaming/tracks/{id}/audio:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [streaming]
+      summary: Upload audio for an owned user-generated track
+      description: Caller must own the track (`owner_user_id` equals caller's user_id).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Stored object metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadAudioResult"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/admin/streaming/tracks/{id}/audio:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [admin]
+      summary: Upload audio for any track (admin only)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Stored object metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadAudioResult"
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+
+  /api/v1/playlists:
+    post:
+      tags: [playlists]
+      summary: Create a playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:        { type: string }
+                description: { type: string }
+                public:      { type: boolean }
+      responses:
+        "201":
+          description: Created playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    get:
+      tags: [playlists]
+      summary: List the caller's playlists
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - in: query
+          name: include_collaborations
+          schema: { type: boolean, default: false }
+          description: Also include playlists the caller collaborates on
+      responses:
+        "200":
+          description: Playlists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlists:
+                    type: array
+                    items: { $ref: "#/components/schemas/Playlist" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/playlists/by-permalink/{code}:
+    parameters:
+      - in: path
+        name: code
+        required: true
+        schema: { type: string }
+    get:
+      tags: [playlists]
+      summary: Resolve a playlist by its short permalink code
+      responses:
+        "200":
+          description: Playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [playlists]
+      summary: Get a playlist by id
+      responses:
+        "200":
+          description: Playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [playlists]
+      summary: Update a playlist (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:        { type: string }
+                description: { type: string }
+                public:      { type: boolean }
+      responses:
+        "200":
+          description: Updated playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [playlists]
+      summary: Delete a playlist (owner only)
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}/tracks:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [playlists]
+      summary: Add a track to a playlist
+      description: Optionally place after `after_track_id` (fractional ranking); appends to end if omitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id]
+              properties:
+                track_id:       { type: string, format: uuid }
+                after_track_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}/tracks/{track_id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+      - in: path
+        name: track_id
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [playlists]
+      summary: Remove a track from a playlist
+      responses:
+        "200":
+          description: Updated playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}/tracks/{track_id}/rank:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+      - in: path
+        name: track_id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [playlists]
+      summary: Reorder a track within a playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                after_track_id:
+                  type: string
+                  format: uuid
+                  description: Place after this track; null/empty moves to the top
+      responses:
+        "200":
+          description: Updated playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}/collaborators:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [playlists]
+      summary: Add a collaborator to a playlist (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [collaborator_id]
+              properties:
+                collaborator_id: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/playlists/{id}/collaborators/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+      - in: path
+        name: user_id
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [playlists]
+      summary: Remove a collaborator from a playlist (owner only)
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/recommendations/daily-mix:
+    get:
+      tags: [recommendations]
+      summary: Personalized daily mix for the caller
+      parameters:
+        - $ref: "#/components/parameters/RecLimit"
+      responses:
+        "200":
+          description: Track references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackRefList"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/recommendations/discover-weekly:
+    get:
+      tags: [recommendations]
+      summary: Weekly discovery picks for the caller
+      parameters:
+        - $ref: "#/components/parameters/RecLimit"
+      responses:
+        "200":
+          description: Track references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackRefList"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/recommendations/top:
+    get:
+      tags: [recommendations]
+      summary: Globally top tracks
+      parameters:
+        - $ref: "#/components/parameters/RecLimit"
+      responses:
+        "200":
+          description: Track references
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracks:
+                    type: array
+                    items: { $ref: "#/components/schemas/TrackRef" }
+
+  /api/v1/recommendations/similar/{track_id}:
+    parameters:
+      - in: path
+        name: track_id
+        required: true
+        schema: { type: string, format: uuid }
+      - $ref: "#/components/parameters/RecLimit"
+    get:
+      tags: [recommendations]
+      summary: Tracks similar to a given track
+      responses:
+        "200":
+          description: Track references
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracks:
+                    type: array
+                    items: { $ref: "#/components/schemas/TrackRef" }
+
+  /api/v1/payments/invoices:
+    post:
+      tags: [payments]
+      summary: Create a NowPayments crypto invoice
+      description: If NowPayments keys are unset the gateway returns 503 (dev mode).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, price_currency, price_amount, pay_currency]
+              properties:
+                purpose:        { type: string, example: premium }
+                price_currency: { type: string, example: usd }
+                price_amount:   { type: string, example: "9.99" }
+                pay_currency:   { type: string, example: usdt }
+      responses:
+        "201":
+          description: Created invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: "#/components/schemas/Payment" }
+                  pay_url: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /api/v1/payments:
+    get:
+      tags: [payments]
+      summary: List the caller's payments
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items: { $ref: "#/components/schemas/Payment" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/payments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      tags: [payments]
+      summary: Get a payment by id
+      responses:
+        "200":
+          description: Payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/payments/nowpayments/webhook:
+    post:
+      tags: [payments]
+      summary: NowPayments IPN webhook (public, HMAC-SHA512 verified)
+      security: []
+      parameters:
+        - in: header
+          name: x-nowpayments-sig
+          required: true
+          schema: { type: string }
+          description: HMAC-SHA512 signature of the raw request body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw NowPayments IPN payload
+      responses:
+        "200": { description: Webhook processed }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+
+  /api/v1/generation/lyrics:
+    post:
+      tags: [generation]
+      summary: Generate song lyrics with Claude
+      description: Returns 503 if the Anthropic API key is not configured.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:   { type: string }
+                title:    { type: string }
+                genre:    { type: string }
+                mood:     { type: string }
+                language: { type: string, example: en }
+      responses:
+        "201":
+          description: Job + first lyrics version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:    { $ref: "#/components/schemas/GenerationJob" }
+                  lyrics: { $ref: "#/components/schemas/LyricsVersion" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /api/v1/generation/lyrics/{job_id}/revise:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    post:
+      tags: [generation]
+      summary: Revise the lyrics of an existing job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instruction]
+              properties:
+                instruction: { type: string }
+      responses:
+        "200":
+          description: Job + new lyrics version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:    { $ref: "#/components/schemas/GenerationJob" }
+                  lyrics: { $ref: "#/components/schemas/LyricsVersion" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/generation/music:
+    post:
+      tags: [generation]
+      summary: Start music generation for a job (async — poll via SSE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_id]
+              properties:
+                job_id: { type: string, format: uuid }
+      responses:
+        "202":
+          description: Job accepted, generation started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/GenerationJob" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/generation/jobs:
+    get:
+      tags: [generation]
+      summary: List the caller's generation jobs
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items: { $ref: "#/components/schemas/GenerationJob" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/v1/generation/jobs/{job_id}:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    get:
+      tags: [generation]
+      summary: Get a generation job with its lyrics history
+      responses:
+        "200":
+          description: Job + lyrics history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/GenerationJob" }
+                  lyrics_history:
+                    type: array
+                    items: { $ref: "#/components/schemas/LyricsVersion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/generation/jobs/{job_id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    post:
+      tags: [generation]
+      summary: Cancel a generation job
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/GenerationJob" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/generation/jobs/{job_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    get:
+      tags: [generation]
+      summary: Server-Sent Events stream of job status updates
+      description: |
+        `text/event-stream`. Each `data:` line is a JSON `GenerationJob`.
+        The stream closes when the job reaches a terminal state (completed/failed/cancelled).
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -459,6 +1333,15 @@ components:
       in: query
       name: offset
       schema: { type: integer, default: 0 }
+    RecLimit:
+      in: query
+      name: limit
+      schema: { type: integer, default: 20, maximum: 100 }
+    JobId:
+      in: path
+      name: job_id
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     Unauthenticated:
@@ -483,6 +1366,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     InvalidArgument:
       description: Request validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: Upstream dependency or external integration is not configured/available
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -531,8 +1419,19 @@ components:
         avatar_url:   { type: string }
         country:      { type: string }
         language:     { type: string }
+        tier:         { type: string, enum: [free, premium] }
         created_at:   { type: integer, format: int64 }
         updated_at:   { type: integer, format: int64 }
+
+    Session:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        created_at: { type: integer, format: int64 }
+        expires_at: { type: integer, format: int64 }
+        revoked:    { type: boolean }
+        current:    { type: boolean, description: True if this is the caller's current device }
+        user_agent: { type: string }
 
     Artist:
       type: object
@@ -566,3 +1465,98 @@ components:
         user_generated: { type: boolean }
         owner_user_id:  { type: string, format: uuid }
         created_at:     { type: integer, format: int64 }
+
+    PlaylistTrack:
+      type: object
+      properties:
+        track_id: { type: string, format: uuid }
+        rank:     { type: string, description: Fractional ranking key for ordering }
+        added_at: { type: integer, format: int64 }
+        added_by: { type: string, format: uuid }
+
+    Playlist:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        owner_id:         { type: string, format: uuid }
+        name:             { type: string }
+        description:      { type: string }
+        public:           { type: boolean }
+        permalink:        { type: string }
+        created_at:       { type: integer, format: int64 }
+        updated_at:       { type: integer, format: int64 }
+        collaborator_ids: { type: array, items: { type: string, format: uuid } }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/PlaylistTrack" }
+
+    TrackRef:
+      type: object
+      properties:
+        track_id: { type: string, format: uuid }
+        score:    { type: number, format: double }
+
+    TrackRefList:
+      type: object
+      properties:
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/TrackRef" }
+        generated_at: { type: integer, format: int64 }
+
+    StreamURL:
+      type: object
+      properties:
+        stream_url:   { type: string }
+        expires_at:   { type: integer, format: int64 }
+        size_bytes:   { type: integer, format: int64 }
+        content_type: { type: string }
+
+    UploadAudioResult:
+      type: object
+      properties:
+        object_key: { type: string }
+        size_bytes: { type: integer, format: int64 }
+
+    Payment:
+      type: object
+      properties:
+        id:                  { type: string, format: uuid }
+        user_id:             { type: string, format: uuid }
+        provider:            { type: string, example: nowpayments }
+        provider_payment_id: { type: string }
+        status:              { type: string, example: waiting }
+        price_currency:      { type: string, example: usd }
+        price_amount:        { type: string, example: "9.99" }
+        pay_currency:        { type: string, example: usdt }
+        pay_address:         { type: string }
+        pay_amount:          { type: string }
+        purpose:             { type: string, example: premium }
+        created_at:          { type: integer, format: int64 }
+        updated_at:          { type: integer, format: int64 }
+
+    GenerationJob:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        user_id:        { type: string, format: uuid }
+        status:         { type: string, example: published }
+        prompt:         { type: string }
+        lyrics:         { type: string }
+        title:          { type: string }
+        genre:          { type: string }
+        mood:           { type: string }
+        language:       { type: string }
+        track_id:       { type: string, format: uuid }
+        failure_reason: { type: string }
+        created_at:     { type: integer, format: int64 }
+        updated_at:     { type: integer, format: int64 }
+
+    LyricsVersion:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        job_id:     { type: string, format: uuid }
+        revision:   { type: integer }
+        body:       { type: string }
+        created_at: { type: integer, format: int64 }

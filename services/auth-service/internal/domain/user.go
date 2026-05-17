@@ -18,6 +18,16 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 	Revoked   bool
+	UserAgent string
+}
+
+type Session struct {
+	ID        string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Revoked   bool
+	Current   bool
+	UserAgent string
 }
 
 type TokenPair struct {

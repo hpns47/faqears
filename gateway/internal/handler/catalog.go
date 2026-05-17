@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	catalogv1 "github.com/faqears/faqears/gen/go/catalog/v1"
+	"github.com/faqears/faqears/pkg/grpcx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -132,6 +133,47 @@ func (h *CatalogHandler) IngestTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := h.catalog.IngestTrack(r.Context(), &req)
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, resp)
+}
+
+const (
+	systemArtistID = "11111111-1111-1111-1111-111111111111"
+	systemAlbumID  = "22222222-2222-2222-2222-222222222222"
+)
+
+func (h *CatalogHandler) CreateUserTrack(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title       string   `json:"title"`
+		DurationSec int32    `json:"duration_sec"`
+		Genres      []string `json:"genres"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	identity := callerIdentity(r.Context())
+	if identity.UserID == "" {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	ctx := grpcx.OutgoingIdentity(r.Context(), identity)
+	resp, err := h.catalog.IngestTrack(ctx, &catalogv1.IngestTrackRequest{
+		AlbumId:       systemAlbumID,
+		ArtistId:      systemArtistID,
+		Title:         body.Title,
+		DurationSec:   body.DurationSec,
+		Genres:        body.Genres,
+		UserGenerated: true,
+		OwnerUserId:   identity.UserID,
+	})
 	if err != nil {
 		writeGRPCError(w, err)
 		return

@@ -27,7 +27,7 @@ func (s *Server) Register(ctx context.Context, req *authv1.RegisterRequest) (*au
 }
 
 func (s *Server) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.LoginResponse, error) {
-	pair, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword())
+	pair, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword(), req.GetUserAgent())
 	if err != nil {
 		return nil, errs.ToGRPC(err)
 	}
@@ -39,7 +39,7 @@ func (s *Server) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.L
 }
 
 func (s *Server) RefreshToken(ctx context.Context, req *authv1.RefreshTokenRequest) (*authv1.RefreshTokenResponse, error) {
-	pair, err := s.auth.Refresh(ctx, req.GetRefreshToken())
+	pair, err := s.auth.Refresh(ctx, req.GetRefreshToken(), req.GetUserAgent())
 	if err != nil {
 		return nil, errs.ToGRPC(err)
 	}
@@ -48,6 +48,39 @@ func (s *Server) RefreshToken(ctx context.Context, req *authv1.RefreshTokenReque
 		RefreshToken:    pair.RefreshToken,
 		AccessExpiresAt: pair.AccessExpiresAt.Unix(),
 	}, nil
+}
+
+func (s *Server) ChangePassword(ctx context.Context, req *authv1.ChangePasswordRequest) (*authv1.ChangePasswordResponse, error) {
+	if err := s.auth.ChangePassword(ctx, req.GetUserId(), req.GetOldPassword(), req.GetNewPassword()); err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	return &authv1.ChangePasswordResponse{}, nil
+}
+
+func (s *Server) ListSessions(ctx context.Context, req *authv1.ListSessionsRequest) (*authv1.ListSessionsResponse, error) {
+	sessions, err := s.auth.ListSessions(ctx, req.GetUserId(), req.GetCurrentRefreshToken())
+	if err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	out := make([]*authv1.Session, 0, len(sessions))
+	for _, sess := range sessions {
+		out = append(out, &authv1.Session{
+			Id:        sess.ID,
+			CreatedAt: sess.CreatedAt.Unix(),
+			ExpiresAt: sess.ExpiresAt.Unix(),
+			Revoked:   sess.Revoked,
+			Current:   sess.Current,
+			UserAgent: sess.UserAgent,
+		})
+	}
+	return &authv1.ListSessionsResponse{Sessions: out}, nil
+}
+
+func (s *Server) RevokeSession(ctx context.Context, req *authv1.RevokeSessionRequest) (*authv1.RevokeSessionResponse, error) {
+	if err := s.auth.RevokeSession(ctx, req.GetUserId(), req.GetSessionId()); err != nil {
+		return nil, errs.ToGRPC(err)
+	}
+	return &authv1.RevokeSessionResponse{}, nil
 }
 
 func (s *Server) ValidateToken(ctx context.Context, req *authv1.ValidateTokenRequest) (*authv1.ValidateTokenResponse, error) {

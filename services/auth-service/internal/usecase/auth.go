@@ -81,7 +81,7 @@ func (a *Auth) Register(ctx context.Context, email, password string) (string, er
 	return u.ID, nil
 }
 
-func (a *Auth) Login(ctx context.Context, email, password string) (*domain.TokenPair, error) {
+func (a *Auth) Login(ctx context.Context, email, password, userAgent string) (*domain.TokenPair, error) {
 	email = normalizeEmail(email)
 	u, err := a.users.GetByEmail(ctx, email)
 	if err != nil {
@@ -103,6 +103,7 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*domain.Token
 		TokenHash: a.issuer.HashRefresh(pair.RefreshToken),
 		ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour),
 		CreatedAt: time.Now().UTC(),
+		UserAgent: userAgent,
 	}
 	if err := a.tokens.Save(ctx, rt); err != nil {
 		return nil, errs.Internal("store refresh token", err)
@@ -124,7 +125,7 @@ func (a *Auth) ValidateToken(ctx context.Context, accessToken string) (*domain.C
 	return claims, nil
 }
 
-func (a *Auth) Refresh(ctx context.Context, refreshToken string) (*domain.TokenPair, error) {
+func (a *Auth) Refresh(ctx context.Context, refreshToken, userAgent string) (*domain.TokenPair, error) {
 	hash := a.issuer.HashRefresh(refreshToken)
 	stored, err := a.tokens.GetByHash(ctx, hash)
 	if err != nil {
@@ -147,12 +148,16 @@ func (a *Auth) Refresh(ctx context.Context, refreshToken string) (*domain.TokenP
 	if err := a.tokens.Revoke(ctx, stored.ID); err != nil {
 		return nil, errs.Internal("revoke old token", err)
 	}
+	if userAgent == "" {
+		userAgent = stored.UserAgent
+	}
 	rt := &domain.RefreshToken{
 		ID:        uuid.NewString(),
 		UserID:    u.ID,
 		TokenHash: a.issuer.HashRefresh(pair.RefreshToken),
 		ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour),
 		CreatedAt: time.Now().UTC(),
+		UserAgent: userAgent,
 	}
 	if err := a.tokens.Save(ctx, rt); err != nil {
 		return nil, errs.Internal("store refresh token", err)
@@ -166,6 +171,77 @@ func (a *Auth) Logout(ctx context.Context, accessToken string) error {
 		return domain.ErrInvalidToken
 	}
 	_ = claims
+	return nil
+}
+
+func (a *Auth) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	u, err := a.users.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrUserNotFound
+		}
+		return errs.Internal("lookup user", err)
+	}
+	if err := a.hasher.Verify(oldPassword, u.PasswordHash); err != nil {
+		return domain.ErrInvalidCredentials
+	}
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	if a.hasher.Verify(newPassword, u.PasswordHash) == nil {
+		return domain.ErrSamePassword
+	}
+	hash, err := a.hasher.Hash(newPassword)
+	if err != nil {
+		return errs.Internal("hash password", err)
+	}
+	if err := a.users.UpdatePassword(ctx, userID, hash); err != nil {
+		return errs.Internal("update password", err)
+	}
+	return nil
+}
+
+func (a *Auth) ListSessions(ctx context.Context, userID, currentRefreshToken string) ([]*domain.Session, error) {
+	stored, err := a.tokens.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, errs.Internal("list sessions", err)
+	}
+	currentHash := ""
+	if currentRefreshToken != "" {
+		currentHash = a.issuer.HashRefresh(currentRefreshToken)
+	}
+	now := time.Now().UTC()
+	sessions := make([]*domain.Session, 0, len(stored))
+	for _, t := range stored {
+		if t.Revoked || t.ExpiresAt.Before(now) {
+			continue
+		}
+		sessions = append(sessions, &domain.Session{
+			ID:        t.ID,
+			CreatedAt: t.CreatedAt,
+			ExpiresAt: t.ExpiresAt,
+			Revoked:   t.Revoked,
+			Current:   currentHash != "" && t.TokenHash == currentHash,
+			UserAgent: t.UserAgent,
+		})
+	}
+	return sessions, nil
+}
+
+func (a *Auth) RevokeSession(ctx context.Context, userID, sessionID string) error {
+	stored, err := a.tokens.GetByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrSessionNotFound
+		}
+		return errs.Internal("lookup session", err)
+	}
+	if stored.UserID != userID {
+		return domain.ErrSessionNotFound
+	}
+	if err := a.tokens.Revoke(ctx, sessionID); err != nil {
+		return errs.Internal("revoke session", err)
+	}
 	return nil
 }
 

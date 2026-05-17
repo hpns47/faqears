@@ -20,9 +20,13 @@ func (r *TrackRepo) Create(ctx context.Context, t *domain.Track) error {
 	const q = `
 INSERT INTO tracks (id, album_id, artist_id, title, duration_sec, isrc, genres, user_generated, owner_user_id, created_at)
 VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, NULLIF($9, '')::uuid, $10)`
+	genres := t.Genres
+	if genres == nil {
+		genres = []string{}
+	}
 	_, err := r.db.Exec(ctx, q,
 		t.ID, t.AlbumID, t.ArtistID, t.Title, t.DurationSec,
-		t.ISRC, t.Genres, t.UserGenerated, t.OwnerUserID, t.CreatedAt,
+		t.ISRC, genres, t.UserGenerated, t.OwnerUserID, t.CreatedAt,
 	)
 	return err
 }

@@ -32,7 +32,12 @@ func NewServer(cfg ServerConfig) (*grpc.Server, net.Listener, error) {
 		IdentityInterceptor(),
 	}
 	chain = append(chain, cfg.Extra...)
-	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(chain...))
+	const maxMessageSize = 64 << 20
+	srv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(chain...),
+		grpc.MaxRecvMsgSize(maxMessageSize),
+		grpc.MaxSendMsgSize(maxMessageSize),
+	)
 	hs := health.NewServer()
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(srv, hs)

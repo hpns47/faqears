@@ -34,7 +34,7 @@ func run(log *slog.Logger) error {
 	}
 	log = logger.New("api-gateway", cfg.LogLevel, os.Stdout)
 
-	clients, err := grpcclients.New(cfg.AuthGRPCAddr, cfg.UserGRPCAddr, cfg.CatalogGRPCAddr)
+	clients, err := grpcclients.New(cfg.AuthGRPCAddr, cfg.UserGRPCAddr, cfg.CatalogGRPCAddr, cfg.StreamingGRPCAddr, cfg.PlaylistGRPCAddr, cfg.RecommendationGRPCAddr, cfg.PaymentGRPCAddr, cfg.GenerationGRPCAddr)
 	if err != nil {
 		return err
 	}

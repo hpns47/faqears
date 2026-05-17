@@ -84,7 +84,7 @@ func run(log *slog.Logger) error {
 	adminGuard := grpcx.RequireMethodAnyRole(map[string][]string{
 		"/catalog.v1.CatalogService/IngestArtist": {"admin", "service"},
 		"/catalog.v1.CatalogService/IngestAlbum":  {"admin", "service"},
-		"/catalog.v1.CatalogService/IngestTrack":  {"admin", "service"},
+		"/catalog.v1.CatalogService/IngestTrack":  {"admin", "service", "user"},
 	})
 	srv, lis, err := grpcx.NewServer(grpcx.ServerConfig{
 		Addr:   cfg.GRPCAddr,

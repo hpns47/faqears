@@ -274,9 +274,11 @@ services:
       STREAMING_KAFKA_BROKERS: "kafka:9092"
       STREAMING_KAFKA_TOPIC: "play.events"
       STREAMING_MINIO_ENDPOINT: "minio:9000"
+      STREAMING_MINIO_PUBLIC_ENDPOINT: "${MINIO_PUBLIC_ENDPOINT:-localhost:9000}"
       STREAMING_MINIO_ACCESS_KEY: "faqears"
       STREAMING_MINIO_SECRET_KEY: "faqears-secret"
       STREAMING_MINIO_USE_SSL: "false"
+      STREAMING_MINIO_REGION: "us-east-1"
       STREAMING_MINIO_BUCKET: "audio-originals"
       STREAMING_SIGNED_URL_TTL: "15m"
       STREAMING_MIGRATE_URL: "file:///app/migrations"
@@ -442,6 +444,11 @@ services:
       GATEWAY_AUTH_GRPC_ADDR: "auth-service:50051"
       GATEWAY_USER_GRPC_ADDR: "user-service:50052"
       GATEWAY_CATALOG_GRPC_ADDR: "catalog-service:50053"
+      GATEWAY_STREAMING_GRPC_ADDR: "streaming-service:50054"
+      GATEWAY_PLAYLIST_GRPC_ADDR: "playlist-service:50055"
+      GATEWAY_RECOMMENDATION_GRPC_ADDR: "recommendation-service:50056"
+      GATEWAY_PAYMENT_GRPC_ADDR: "payment-service:50057"
+      GATEWAY_GENERATION_GRPC_ADDR: "generation-service:50058"
       GATEWAY_REDIS_ADDR: "redis:6379"
       GATEWAY_TOKEN_CACHE_TTL: "30s"
       GATEWAY_RATE_LIMIT_ANON: "100"
@@ -455,6 +462,16 @@ services:
       catalog-service:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      streaming-service:
+        condition: service_healthy
+      playlist-service:
+        condition: service_healthy
+      recommendation-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      generation-service:
         condition: service_healthy
     ports:
       - "8080:8080"

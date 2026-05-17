@@ -8,12 +8,13 @@ import (
 )
 
 type Storage struct {
-	client *pkgminio.Client
-	bucket string
+	client  *pkgminio.Client
+	presign *pkgminio.Client
+	bucket  string
 }
 
-func NewStorage(client *pkgminio.Client, bucket string) *Storage {
-	return &Storage{client: client, bucket: bucket}
+func NewStorage(client, presign *pkgminio.Client, bucket string) *Storage {
+	return &Storage{client: client, presign: presign, bucket: bucket}
 }
 
 func (s *Storage) Put(ctx context.Context, key, contentType string, data []byte) (int64, error) {
@@ -21,5 +22,5 @@ func (s *Storage) Put(ctx context.Context, key, contentType string, data []byte)
 }
 
 func (s *Storage) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	return s.client.PresignGet(ctx, s.bucket, key, ttl)
+	return s.presign.PresignGet(ctx, s.bucket, key, ttl)
 }

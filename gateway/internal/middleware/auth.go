@@ -33,7 +33,7 @@ func Auth(authClient authv1.AuthServiceClient, rdb *redis.Client, ttl time.Durat
 			token := strings.TrimPrefix(header, "Bearer ")
 
 			claims, err := resolveClaims(r.Context(), token, authClient, rdb, ttl)
-			if err != nil {
+			if err != nil || claims == nil || claims.UserID == "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				w.Write([]byte(`{"error":"invalid or expired token"}`))
@@ -61,7 +61,7 @@ func resolveClaims(ctx context.Context, token string, authClient authv1.AuthServ
 	val, err := rdb.Get(ctx, key).Result()
 	if err == nil {
 		var claims cachedClaims
-		if jsonErr := json.Unmarshal([]byte(val), &claims); jsonErr == nil {
+		if jsonErr := json.Unmarshal([]byte(val), &claims); jsonErr == nil && claims.UserID != "" {
 			return &claims, nil
 		}
 	}
@@ -69,6 +69,9 @@ func resolveClaims(ctx context.Context, token string, authClient authv1.AuthServ
 	resp, err := authClient.ValidateToken(ctx, &authv1.ValidateTokenRequest{AccessToken: token})
 	if err != nil {
 		return nil, err
+	}
+	if resp.UserId == "" {
+		return nil, fmt.Errorf("empty user_id in token claims")
 	}
 
 	claims := &cachedClaims{

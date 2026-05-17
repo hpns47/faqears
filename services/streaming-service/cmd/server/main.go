@@ -74,6 +74,7 @@ func run(log *slog.Logger) error {
 		AccessKey: cfg.MinioAccessKey,
 		SecretKey: cfg.MinioSecretKey,
 		UseSSL:    cfg.MinioUseSSL,
+		Region:    cfg.MinioRegion,
 	})
 	if err != nil {
 		return err
@@ -83,13 +84,25 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("minio connected", slog.String("bucket", cfg.MinioBucket))
 
+	presignClient, err := pkgminio.NewUnverified(pkgminio.Config{
+		Endpoint:  cfg.MinioPublicEndpoint,
+		AccessKey: cfg.MinioAccessKey,
+		SecretKey: cfg.MinioSecretKey,
+		UseSSL:    cfg.MinioPublicUseSSL,
+		Region:    cfg.MinioRegion,
+	})
+	if err != nil {
+		return err
+	}
+	log.Info("minio presign endpoint", slog.String("endpoint", cfg.MinioPublicEndpoint))
+
 	publisher := kafkaadapter.NewPublisher(cfg.Brokers, cfg.KafkaTopic)
 	defer publisher.Close()
 
 	uc := usecase.NewStreaming(
 		pgadapter.NewAudioRepo(pool),
 		redisadapter.NewSessionStore(redisClient),
-		minioadapter.NewStorage(minioClient, cfg.MinioBucket),
+		minioadapter.NewStorage(minioClient, presignClient, cfg.MinioBucket),
 		publisher,
 		cfg.MinioBucket,
 		cfg.SignedURLTTL,

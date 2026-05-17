@@ -10,4 +10,6 @@ var (
 	ErrTokenRevoked       = errs.Unauthenticated("token has been revoked")
 	ErrWeakPassword       = errs.InvalidArgument("password must be at least 8 characters")
 	ErrInvalidEmail       = errs.InvalidArgument("invalid email format")
+	ErrSessionNotFound    = errs.NotFound("session not found")
+	ErrSamePassword       = errs.InvalidArgument("new password must differ from the current one")
 )

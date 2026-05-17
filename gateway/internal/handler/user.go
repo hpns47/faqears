@@ -61,6 +61,35 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp.User)
 }
 
+func (h *UserHandler) UpdateTier(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	callerID := middleware.GetUserID(r.Context())
+	if id != callerID {
+		writeError(w, http.StatusForbidden, "cannot change another user's tier")
+		return
+	}
+	var body struct {
+		Tier string `json:"tier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Tier != "free" && body.Tier != "premium" {
+		writeError(w, http.StatusBadRequest, "tier must be 'free' or 'premium'")
+		return
+	}
+	resp, err := h.user.UpdateTier(r.Context(), &userv1.UpdateTierRequest{
+		UserId: id,
+		Tier:   body.Tier,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp.User)
+}
+
 func (h *UserHandler) Follow(w http.ResponseWriter, r *http.Request) {
 	followeeID := chi.URLParam(r, "id")
 	callerID := middleware.GetUserID(r.Context())

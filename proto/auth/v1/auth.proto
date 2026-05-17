@@ -8,6 +8,9 @@ service AuthService {
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
   rpc OAuthAuthorizeURL(OAuthAuthorizeURLRequest) returns (OAuthAuthorizeURLResponse);
   rpc OAuthCallback(OAuthCallbackRequest) returns (OAuthCallbackResponse);
 }
@@ -24,6 +27,7 @@ message RegisterResponse {
 message LoginRequest {
   string email = 1;
   string password = 2;
+  string user_agent = 3;
 }
 
 message LoginResponse {
@@ -34,6 +38,7 @@ message LoginResponse {
 
 message RefreshTokenRequest {
   string refresh_token = 1;
+  string user_agent = 2;
 }
 
 message RefreshTokenResponse {
@@ -57,6 +62,39 @@ message LogoutRequest {
 }
 
 message LogoutResponse {}
+
+message ChangePasswordRequest {
+  string user_id = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+
+message ChangePasswordResponse {}
+
+message Session {
+  string id = 1;
+  int64 created_at = 2;
+  int64 expires_at = 3;
+  bool revoked = 4;
+  bool current = 5;
+  string user_agent = 6;
+}
+
+message ListSessionsRequest {
+  string user_id = 1;
+  string current_refresh_token = 2;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message RevokeSessionRequest {
+  string user_id = 1;
+  string session_id = 2;
+}
+
+message RevokeSessionResponse {}
 
 message OAuthAuthorizeURLRequest {
   string provider = 1;
